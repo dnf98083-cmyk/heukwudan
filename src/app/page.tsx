@@ -1,65 +1,73 @@
-import Image from "next/image";
+import Link from "next/link";
+import { Shield, Swords, BookOpen, TrendingUp } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-export default function Home() {
+const sections = [
+  {
+    href: "/defense",
+    icon: Shield,
+    title: "방어팀 공략",
+    description: "영웅 조합별 장비, 메인옵, 스탯 공략을 확인하세요.",
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
+  },
+  {
+    href: "/records",
+    icon: Swords,
+    title: "수비 기록",
+    description: "길드원 수비 승패 기록 및 시즌 승률을 확인하세요.",
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+  },
+  {
+    href: "/heroes",
+    icon: BookOpen,
+    title: "영웅 도감",
+    description: "세나리버스 영웅 정보를 한눈에 확인하세요.",
+    color: "text-green-400",
+    bg: "bg-green-400/10",
+  },
+];
+
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="space-y-8">
+      <div className="text-center space-y-2 py-8">
+        <h1 className="text-3xl font-bold tracking-tight">⚔️ 흑우단 공략</h1>
+        <p className="text-muted-foreground">세븐나이츠 리버스 길드 공략 허브</p>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        {sections.map(({ href, icon: Icon, title, description, color, bg }) => (
+          <Link key={href} href={href}>
+            <Card className="h-full transition-colors hover:bg-accent/30 cursor-pointer">
+              <CardHeader className="pb-2">
+                <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center mb-2`}>
+                  <Icon size={20} className={color} />
+                </div>
+                <CardTitle className="text-base">{title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">{description}</p>
+              </CardContent>
+            </Card>
+          </Link>
+        ))}
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <TrendingUp size={16} />
+            공지 / 업데이트
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            흑우단 공략 사이트에 오신 것을 환영합니다. 방어팀 공략을 확인하거나 수비 기록을 남겨보세요.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+        </CardContent>
+      </Card>
     </div>
   );
 }
