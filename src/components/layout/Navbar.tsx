@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Shield, Swords, BookOpen, User, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { UserRole } from "@/lib/session";
 
 const navItems = [
   { href: "/defense", label: "방어팀 공략", icon: Shield },
@@ -12,17 +13,31 @@ const navItems = [
   { href: "/heroes", label: "영웅 도감", icon: BookOpen },
 ];
 
+const ROLE_BADGE: Record<UserRole, { label: string; className: string } | null> = {
+  슈퍼개발자: null, // 슈퍼개발자는 배지 숨김
+  관리자: { label: "관리자", className: "bg-amber-500/20 text-amber-400" },
+  연구원: { label: "연구원", className: "bg-blue-500/20 text-blue-400" },
+  길드원: { label: "길드원", className: "bg-muted text-muted-foreground" },
+};
+
 interface NavbarProps {
-  user?: { nickname: string; role: string } | null;
+  user?: { nickname: string; role: UserRole } | null;
 }
 
 export default function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-14 items-center px-4">
-        <Link href="/" className="mr-6 flex items-center gap-2 font-bold text-primary">
+        <Link href="/" className="mr-6 flex items-center gap-2 font-bold">
           <span className="text-lg">⚔️ 흑우단 공략</span>
         </Link>
 
@@ -50,18 +65,16 @@ export default function Navbar({ user }: NavbarProps) {
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <User size={14} />
                 {user.nickname}
-                {user.role === "관리자" && (
-                  <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-400">
-                    관리자
+                {ROLE_BADGE[user.role] && (
+                  <span className={`rounded px-1.5 py-0.5 text-xs ${ROLE_BADGE[user.role]!.className}`}>
+                    {ROLE_BADGE[user.role]!.label}
                   </span>
                 )}
               </span>
-              <form action="/api/auth/logout" method="POST">
-                <Button variant="ghost" size="sm" type="submit">
-                  <LogOut size={14} />
-                  로그아웃
-                </Button>
-              </form>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut size={14} />
+                로그아웃
+              </Button>
             </>
           ) : (
             <Link
