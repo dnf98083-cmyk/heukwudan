@@ -97,6 +97,14 @@ export default function AttackClient({ initialTeams, playerNickname, userRole }:
     if (selectedTeamId) await loadDecks(selectedTeamId);
   }
 
+  async function handleDeleteTeam(team: { id: string; title: string }) {
+    if (!confirm(`"${team.title}" 방어팀을 삭제할까요?\n(해당 팀의 공략덱도 모두 삭제됩니다)`)) return;
+    await createClient().from("attack_decks").delete().eq("defense_team_id", team.id);
+    await createClient().from("defense_teams").delete().eq("id", team.id);
+    if (selectedTeamId === team.id) { setSelectedTeamId(null); setDecks([]); }
+    await refreshTeams();
+  }
+
   async function handleDeleteDeck(deck: AttackDeck) {
     if (!confirm(`"${deck.name}" 공격덱을 삭제할까요?`)) return;
     await createClient().from("attack_decks").delete().eq("id", deck.id);
@@ -144,16 +152,26 @@ export default function AttackClient({ initialTeams, playerNickname, userRole }:
               />
               <div className="max-h-52 overflow-y-auto space-y-0.5">
                 {filteredTeams.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => { setSelectedTeamId(t.id); setDropdownOpen(false); setSearch(""); }}
-                    className={cn(
-                      "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                      selectedTeamId === t.id ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                  <div key={t.id} className="flex items-center group/item rounded-md">
+                    <button
+                      onClick={() => { setSelectedTeamId(t.id); setDropdownOpen(false); setSearch(""); }}
+                      className={cn(
+                        "flex-1 text-left px-3 py-2 rounded-md text-sm transition-colors",
+                        selectedTeamId === t.id ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
+                      )}
+                    >
+                      {t.title}
+                    </button>
+                    {canEdit && (
+                      <button
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => handleDeleteTeam(t)}
+                        className="shrink-0 p-1.5 mr-1 rounded text-muted-foreground hover:text-red-400 opacity-0 group-hover/item:opacity-100 transition-opacity"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     )}
-                  >
-                    {t.title}
-                  </button>
+                  </div>
                 ))}
                 {filteredTeams.length === 0 && (
                   <p className="text-center text-xs text-muted-foreground py-4">검색 결과 없음</p>
@@ -266,7 +284,7 @@ export default function AttackClient({ initialTeams, playerNickname, userRole }:
       )}
 
       {/* 다이얼로그들 */}
-      <DeckDialog deck={selectedDeck} onClose={() => setSelectedDeck(null)} onRecord={recordResult} />
+      <DeckDialog deck={selectedDeck} onClose={() => setSelectedDeck(null)} onRecord={recordResult} playerNickname={playerNickname} />
 
       <AddEnemyTeamDialog
         open={addEnemyOpen}
@@ -503,27 +521,68 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 // 덱 상세 다이얼로그 (승/패 기록)
 // ────────────────────────────────────────────────
 function DeckDialog({
-  deck, onClose, onRecord,
+  deck, onClose, onRecord, playerNickname,
 }: {
   deck: AttackDeck | null;
   onClose: () => void;
   onRecord: (deckId: string, result: "승" | "패") => Promise<void>;
+  playerNickname: string;
 }) {
   const [recording, setRecording] = useState(false);
+  // 패배 후 속공 메모 단계
+  const [showSpeedNote, setShowSpeedNote] = useState(false);
+  const [speedNote, setSpeedNote] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
+  const [latestRecordId, setLatestRecordId] = useState<string | null>(null);
+
+  function handleClose() {
+    setShowSpeedNote(false);
+    setSpeedNote("");
+    setLatestRecordId(null);
+    onClose();
+  }
 
   async function handleResult(result: "승" | "패") {
     if (!deck) return;
     setRecording(true);
     await onRecord(deck.id, result);
-    setRecording(false);
-    onClose();
+
+    if (result === "패") {
+      // 가장 최근 기록 ID를 가져와서 속공 메모 단계로 전환
+      const { data } = await createClient()
+        .from("guild_war_records")
+        .select("id")
+        .eq("deck_id", deck.id)
+        .eq("player_name", playerNickname)
+        .order("recorded_at", { ascending: false })
+        .limit(1)
+        .single();
+      setLatestRecordId(data?.id ?? null);
+      setRecording(false);
+      setShowSpeedNote(true);
+    } else {
+      setRecording(false);
+      handleClose();
+    }
+  }
+
+  async function handleSaveNote() {
+    if (latestRecordId && speedNote.trim()) {
+      setSavingNote(true);
+      await createClient()
+        .from("guild_war_records")
+        .update({ note: speedNote.trim() })
+        .eq("id", latestRecordId);
+      setSavingNote(false);
+    }
+    handleClose();
   }
 
   if (!deck) return null;
   const rate = winRate(deck);
 
   return (
-    <Dialog open={!!deck} onOpenChange={onClose}>
+    <Dialog open={!!deck} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
         <div className="space-y-4">
           <div className="flex items-start justify-between gap-3">
@@ -572,16 +631,45 @@ function DeckDialog({
               </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button onClick={() => handleResult("승")} disabled={recording}
-              className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50">
-              🏆 승리
-            </button>
-            <button onClick={() => handleResult("패")} disabled={recording}
-              className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
-              💀 패배
-            </button>
-          </div>
+          {!showSpeedNote ? (
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button onClick={() => handleResult("승")} disabled={recording}
+                className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50">
+                🏆 승리
+              </button>
+              <button onClick={() => handleResult("패")} disabled={recording}
+                className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+                {recording ? "기록 중..." : "💀 패배"}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3 pt-1">
+              <div className="rounded-lg bg-red-950/30 border border-red-800/40 px-3 py-2">
+                <p className="text-xs font-semibold text-red-400">💀 패배 기록됨</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">⚡ 속공 메모 (선택)</label>
+                <textarea
+                  value={speedNote}
+                  onChange={(e) => setSpeedNote(e.target.value)}
+                  placeholder={"예: 속공 잃음 — 상대 315 / 내 310\n예: 속공 따냄 — 상대 290 / 내 300"}
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={handleClose}
+                  className="py-2 rounded-lg text-sm border border-border text-muted-foreground hover:bg-accent/30 transition-colors">
+                  건너뛰기
+                </button>
+                <button onClick={handleSaveNote} disabled={savingNote}
+                  className="py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 font-semibold">
+                  {savingNote ? "저장 중..." : "저장"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </DialogContent>
     </Dialog>

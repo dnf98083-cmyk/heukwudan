@@ -68,6 +68,7 @@ export interface GuildWarRecord {
   player_name: string;
   deck_id: string;
   result: Result;
+  note: string | null;
   season: number;
   recorded_at: string;
 }
