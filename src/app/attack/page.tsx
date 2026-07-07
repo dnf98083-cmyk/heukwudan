@@ -20,6 +20,7 @@ export default async function AttackPage() {
     <AttackClient
       initialTeams={teams ?? []}
       playerNickname={session.nickname ?? ""}
+      userRole={session.role}
     />
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Swords, ChevronDown, Trophy, Plus, Pencil, Trash2 } from "lucide-react";
+import { Swords, ChevronDown, Plus, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -10,11 +10,17 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { HeroPicker } from "@/components/ui/HeroPicker";
+import { FormationEditor, FormationPreview, arrayToSlots, slotsToArray } from "@/components/ui/FormationEditor";
+import type { SlotMap } from "@/components/ui/FormationEditor";
 import type { AttackDeck, FormationType, SpeedType } from "@/types";
+import type { UserRole } from "@/lib/session";
+
+const EDIT_ROLES: UserRole[] = ["슈퍼개발자", "관리자", "연구원"];
 
 interface Props {
   initialTeams: { id: string; title: string }[];
   playerNickname: string;
+  userRole: UserRole | undefined;
 }
 
 type SortKey = "winrate" | "usage" | "recent" | "games";
@@ -31,7 +37,6 @@ const FORMATION_COLOR: Record<FormationType, string> = {
 };
 
 const SPEED_TYPES: SpeedType[] = ["속공 따야 함", "내줘도 됨"];
-const FORMATION_TYPES: FormationType[] = ["기본", "밸런스", "공격", "보호"];
 
 function winRate(deck: AttackDeck) {
   const total = deck.wins + deck.losses;
@@ -47,7 +52,8 @@ function sortDecks(decks: AttackDeck[], key: SortKey) {
   });
 }
 
-export default function AttackClient({ initialTeams, playerNickname }: Props) {
+export default function AttackClient({ initialTeams, playerNickname, userRole }: Props) {
+  const canEdit = !!userRole && EDIT_ROLES.includes(userRole);
   const [teams, setTeams] = useState(initialTeams);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -98,7 +104,6 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
   }
 
   const sortedDecks = sortDecks(decks, sort);
-  const ranking = sortDecks(decks, "winrate").slice(0, 5);
 
   return (
     <div className="space-y-5">
@@ -107,10 +112,12 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
           <Swords size={22} />
           길드전 공격기록
         </h1>
-        <Button size="sm" className="gap-1.5" onClick={() => setAddEnemyOpen(true)}>
-          <Plus size={14} />
-          상대 방어팀 추가
-        </Button>
+        {canEdit && (
+          <Button size="sm" className="gap-1.5" onClick={() => setAddEnemyOpen(true)}>
+            <Plus size={14} />
+            상대 방어팀 추가
+          </Button>
+        )}
       </div>
 
       {/* 방어팀 선택 드롭다운 */}
@@ -223,21 +230,22 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
                         </CardContent>
                       </Card>
                     </button>
-                    {/* 수정/삭제 버튼 */}
-                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditDeck(deck); }}
-                        className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
-                      >
-                        <Pencil size={12} />
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDeleteDeck(deck); }}
-                        className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-red-400 shadow-sm"
-                      >
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
+                    {canEdit && (
+                      <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditDeck(deck); }}
+                          className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteDeck(deck); }}
+                          className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-red-400 shadow-sm"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -255,32 +263,6 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
             이 방어팀 공략 덱 추가
           </Button>
         </>
-      )}
-
-      {/* 랭킹 */}
-      {ranking.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <p className="text-sm font-semibold flex items-center gap-1.5">
-              <Trophy size={15} className="text-yellow-400" />
-              이 방어팀 랭킹
-            </p>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-2">
-            {ranking.map((deck, i) => (
-              <div key={deck.id} className="flex items-center gap-3 text-sm">
-                <span className={cn(
-                  "w-5 text-center font-black shrink-0",
-                  i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-muted-foreground"
-                )}>{i + 1}</span>
-                <span className="flex-1 truncate">{deck.name}</span>
-                <span className={cn("font-bold shrink-0", winRate(deck) >= 70 ? "text-green-400" : "text-muted-foreground")}>
-                  {winRate(deck)}%
-                </span>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
       )}
 
       {/* 다이얼로그들 */}
@@ -330,10 +312,23 @@ function AddEnemyTeamDialog({
 }) {
   const [title, setTitle] = useState("");
   const [heroes, setHeroes] = useState<string[]>([]);
+  const [isAutoTitle, setIsAutoTitle] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function reset() { setTitle(""); setHeroes([]); setError(""); }
+  function reset() { setTitle(""); setHeroes([]); setIsAutoTitle(true); setError(""); }
+
+  function handleAdd(name: string) {
+    const next = [...heroes, name];
+    setHeroes(next);
+    if (isAutoTitle) setTitle(next.join(" "));
+  }
+
+  function handleRemove(name: string) {
+    const next = heroes.filter((h) => h !== name);
+    setHeroes(next);
+    if (isAutoTitle) setTitle(next.join(" "));
+  }
 
   async function handleSave() {
     if (!title.trim()) { setError("팀 이름을 입력하세요."); return; }
@@ -356,14 +351,18 @@ function AddEnemyTeamDialog({
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">팀 이름 *</label>
-            <Input placeholder="예: 여포 브브 칼헬론" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              placeholder="영웅 선택 시 자동 입력"
+              value={title}
+              onChange={(e) => { setIsAutoTitle(false); setTitle(e.target.value); }}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">영웅 구성</label>
             <HeroPicker
               selected={heroes}
-              onAdd={(name) => setHeroes((p) => [...p, name])}
-              onRemove={(name) => setHeroes((p) => p.filter((h) => h !== name))}
+              onAdd={handleAdd}
+              onRemove={handleRemove}
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -391,16 +390,30 @@ function DeckFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const empty = { name: "", speed_type: "" as SpeedType | "", ring: "", pet: "", formation_type: "" as FormationType | "", formation: "", skill_order: "", equipment: "" };
+  const empty = { name: "", speed_type: "" as SpeedType | "", ring: "", pet: "", formation_type: "기본" as FormationType, skill_order: "", equipment: "" };
   const [form, setForm] = useState(initialDeck
-    ? { name: initialDeck.name, speed_type: initialDeck.speed_type ?? "" as SpeedType | "", ring: initialDeck.ring ?? "", pet: initialDeck.pet ?? "", formation_type: initialDeck.formation_type ?? "" as FormationType | "", formation: initialDeck.formation ?? "", skill_order: initialDeck.skill_order ?? "", equipment: initialDeck.equipment ?? "" }
+    ? { name: initialDeck.name, speed_type: initialDeck.speed_type ?? "" as SpeedType | "", ring: initialDeck.ring ?? "", pet: initialDeck.pet ?? "", formation_type: initialDeck.formation_type ?? "기본" as FormationType, skill_order: initialDeck.skill_order ?? "", equipment: initialDeck.equipment ?? "" }
     : empty
   );
+  const [slotMap, setSlotMap] = useState<SlotMap>(() => arrayToSlots(initialDeck?.formation_slots ?? null));
+  // 유저가 직접 이름 수정하면 false → 이후 슬롯 변경해도 덮어쓰지 않음
+  const [isAutoName, setIsAutoName] = useState(!initialDeck);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((p) => ({ ...p, [key]: e.target.value }));
+
+  function handleSlotsChange(newSlots: SlotMap) {
+    setSlotMap(newSlots);
+    if (!isAutoName) return;
+    const autoName = Object.entries(newSlots)
+      .filter(([, name]) => name)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([, name]) => name)
+      .join(" ");
+    setForm((p) => ({ ...p, name: autoName }));
+  }
 
   async function handleSave() {
     if (!form.name.trim()) { setError("덱 이름을 입력하세요."); return; }
@@ -412,7 +425,7 @@ function DeckFormDialog({
       ring: form.ring || null,
       pet: form.pet || null,
       formation_type: form.formation_type || null,
-      formation: form.formation || null,
+      formation_slots: slotsToArray(slotMap),
       skill_order: form.skill_order || null,
       equipment: form.equipment || null,
       created_by: playerNickname,
@@ -431,7 +444,11 @@ function DeckFormDialog({
         <div className="space-y-4">
           <h2 className="text-lg font-bold">{title}</h2>
           <Field label="덱 이름 *">
-            <Input placeholder="예: 브브 여포 풍연" value={form.name} onChange={set("name")} />
+            <Input
+              placeholder="영웅 선택 시 자동 입력"
+              value={form.name}
+              onChange={(e) => { setIsAutoName(false); setForm((p) => ({ ...p, name: e.target.value })); }}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="속공">
@@ -441,13 +458,6 @@ function DeckFormDialog({
                 {SPEED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </Field>
-            <Field label="진형">
-              <select value={form.formation_type} onChange={set("formation_type")}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
-                <option value="">선택 안 함</option>
-                {FORMATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Field>
             <Field label="반지">
               <Input placeholder="반지 이름" value={form.ring} onChange={set("ring")} />
             </Field>
@@ -455,8 +465,13 @@ function DeckFormDialog({
               <Input placeholder="펫 이름" value={form.pet} onChange={set("pet")} />
             </Field>
           </div>
-          <Field label="진형 구성">
-            <Input placeholder="예: 브브 여포 풍연" value={form.formation} onChange={set("formation")} />
+          <Field label="진형 설정">
+            <FormationEditor
+              formationType={form.formation_type}
+              onFormationTypeChange={(type) => setForm((p) => ({ ...p, formation_type: type }))}
+              slots={slotMap}
+              onSlotsChange={handleSlotsChange}
+            />
           </Field>
           <Field label="스킬 순서">
             <Input placeholder="예: 브브 → 여포 → 풍연" value={form.skill_order} onChange={set("skill_order")} />
@@ -533,12 +548,17 @@ function DeckDialog({
             {deck.pet && <Badge variant="secondary">🐾 {deck.pet}</Badge>}
           </div>
           <div className="space-y-2 text-sm">
-            {deck.formation && (
+            {deck.formation_slots && deck.formation_slots.length > 0 ? (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1.5">진형 {deck.formation_type && `(${deck.formation_type})`}</p>
+                <FormationPreview slots={deck.formation_slots} formationType={deck.formation_type ?? "기본"} />
+              </div>
+            ) : deck.formation ? (
               <div>
                 <p className="text-xs text-muted-foreground">진형 {deck.formation_type && `(${deck.formation_type})`}</p>
                 <p className="font-medium">{deck.formation}</p>
               </div>
-            )}
+            ) : null}
             {deck.skill_order && (
               <div>
                 <p className="text-xs text-muted-foreground">스킬 순서</p>

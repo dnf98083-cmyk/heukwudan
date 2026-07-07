@@ -24,6 +24,8 @@ export interface DefenseTeam {
   id: string;
   title: string;
   hero_names: string[];
+  formation_type: FormationType | null;
+  formation_slots: Array<{ pos: number; name: string }> | null;
   display_order: number;
   created_at: string;
   updated_at: string;
@@ -53,6 +55,7 @@ export interface AttackDeck {
   formation: string | null;
   skill_order: string | null;
   equipment: string | null;
+  formation_slots: Array<{ pos: number; name: string }> | null;
   wins: number;
   losses: number;
   last_used_at: string | null;

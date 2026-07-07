@@ -10,8 +10,10 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { HeroPicker } from "@/components/ui/HeroPicker";
+import { FormationEditor, FormationPreview, arrayToSlots, slotsToArray } from "@/components/ui/FormationEditor";
+import type { SlotMap } from "@/components/ui/FormationEditor";
 import { searchHeroes } from "@/lib/hero-search";
-import type { DefenseTeam, DefenseStrategy } from "@/types";
+import type { DefenseTeam, DefenseStrategy, FormationType } from "@/types";
 
 export default function DefensePage() {
   const [teams, setTeams] = useState<DefenseTeam[]>([]);
@@ -120,6 +122,12 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
                 <Badge key={name} variant="secondary" className="text-xs">{name}</Badge>
               ))}
             </div>
+            {team.formation_slots && team.formation_slots.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground mb-1.5">진형 {team.formation_type && `(${team.formation_type})`}</p>
+                <FormationPreview slots={team.formation_slots} formationType={team.formation_type ?? "기본"} />
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             <button
@@ -239,10 +247,25 @@ function AddTeamDialog({
 }) {
   const [title, setTitle] = useState("");
   const [heroes, setHeroes] = useState<string[]>([]);
+  const [isAutoTitle, setIsAutoTitle] = useState(true);
+  const [formationType, setFormationType] = useState<FormationType>("기본");
+  const [slotMap, setSlotMap] = useState<SlotMap>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function reset() { setTitle(""); setHeroes([]); setError(""); }
+  function reset() { setTitle(""); setHeroes([]); setIsAutoTitle(true); setFormationType("기본"); setSlotMap({}); setError(""); }
+
+  function handleAdd(name: string) {
+    const next = [...heroes, name];
+    setHeroes(next);
+    if (isAutoTitle) setTitle(next.join(" "));
+  }
+
+  function handleRemove(name: string) {
+    const next = heroes.filter((h) => h !== name);
+    setHeroes(next);
+    if (isAutoTitle) setTitle(next.join(" "));
+  }
 
   async function handleSave() {
     if (!title.trim()) { setError("팀 이름을 입력하세요."); return; }
@@ -250,7 +273,7 @@ function AddTeamDialog({
     setSaving(true);
     const { error: err } = await createClient()
       .from("defense_teams")
-      .insert({ title: title.trim(), hero_names: heroes, display_order: nextOrder, team_type: "our" });
+      .insert({ title: title.trim(), hero_names: heroes, display_order: nextOrder, team_type: "our", formation_type: formationType, formation_slots: slotsToArray(slotMap) });
     setSaving(false);
     if (err) { setError(err.message); return; }
     reset(); onSaved();
@@ -258,19 +281,32 @@ function AddTeamDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <div className="space-y-4">
           <h2 className="text-lg font-bold">우리 방어팀 추가</h2>
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">팀 이름 *</label>
-            <Input placeholder="예: 여포 브브 칼헬론" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <Input
+              placeholder="영웅 선택 시 자동 입력"
+              value={title}
+              onChange={(e) => { setIsAutoTitle(false); setTitle(e.target.value); }}
+            />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">영웅 선택 *</label>
             <HeroPicker
               selected={heroes}
-              onAdd={(name) => setHeroes((p) => [...p, name])}
-              onRemove={(name) => setHeroes((p) => p.filter((h) => h !== name))}
+              onAdd={handleAdd}
+              onRemove={handleRemove}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">진형 설정</label>
+            <FormationEditor
+              formationType={formationType}
+              onFormationTypeChange={setFormationType}
+              slots={slotMap}
+              onSlotsChange={setSlotMap}
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -294,6 +330,8 @@ function EditTeamDialog({
 }) {
   const [title, setTitle] = useState(team.title);
   const [heroes, setHeroes] = useState<string[]>(team.hero_names);
+  const [formationType, setFormationType] = useState<FormationType>(team.formation_type ?? "기본");
+  const [slotMap, setSlotMap] = useState<SlotMap>(() => arrayToSlots(team.formation_slots));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -303,7 +341,7 @@ function EditTeamDialog({
     setSaving(true);
     const { error: err } = await createClient()
       .from("defense_teams")
-      .update({ title: title.trim(), hero_names: heroes })
+      .update({ title: title.trim(), hero_names: heroes, formation_type: formationType, formation_slots: slotsToArray(slotMap) })
       .eq("id", team.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
@@ -312,7 +350,7 @@ function EditTeamDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <div className="space-y-4">
           <h2 className="text-lg font-bold">방어팀 수정</h2>
           <div className="space-y-1.5">
@@ -325,6 +363,15 @@ function EditTeamDialog({
               selected={heroes}
               onAdd={(name) => setHeroes((p) => [...p, name])}
               onRemove={(name) => setHeroes((p) => p.filter((h) => h !== name))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">진형 설정</label>
+            <FormationEditor
+              formationType={formationType}
+              onFormationTypeChange={setFormationType}
+              slots={slotMap}
+              onSlotsChange={setSlotMap}
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -419,9 +466,7 @@ function AddStrategyDialog({
         const { error } = await createClient().from("defense_strategies").insert({
           team_id: teamId,
           strategy_num: nextNum,
-          ...Object.fromEntries(
-            Object.entries(form).map(([k, v]) => [k, v || null])
-          ),
+          ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v || null])),
         });
         if (!error) onSaved();
       }}
@@ -448,9 +493,7 @@ function EditStrategyDialog({
       onClose={onClose}
       onSave={async (form) => {
         const { error } = await createClient().from("defense_strategies").update({
-          ...Object.fromEntries(
-            Object.entries(form).map(([k, v]) => [k, v || null])
-          ),
+          ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v || null])),
         }).eq("id", s.id);
         if (!error) onSaved();
       }}
