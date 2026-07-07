@@ -9,7 +9,7 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
-import type { AttackDeck, FormationType } from "@/types";
+import type { AttackDeck, FormationType, SpeedType } from "@/types";
 
 interface Props {
   initialTeams: { id: string; title: string }[];
@@ -54,6 +54,7 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
   const [decks, setDecks] = useState<AttackDeck[]>([]);
   const [loadingDecks, setLoadingDecks] = useState(false);
   const [selectedDeck, setSelectedDeck] = useState<AttackDeck | null>(null);
+  const [addDeckOpen, setAddDeckOpen] = useState(false);
 
   const filteredTeams = initialTeams.filter((t) => t.title.includes(search));
   const selectedTeam = initialTeams.find((t) => t.id === selectedTeamId);
@@ -101,7 +102,12 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
           <Swords size={22} />
           길드전 공격기록
         </h1>
-        <Button size="sm" className="gap-1.5">
+        <Button
+          size="sm"
+          className="gap-1.5"
+          disabled={!selectedTeamId}
+          onClick={() => setAddDeckOpen(true)}
+        >
           <Plus size={14} />
           공격덱 추가
         </Button>
@@ -255,6 +261,143 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
         onClose={() => setSelectedDeck(null)}
         onRecord={recordResult}
       />
+
+      {selectedTeamId && (
+        <AddDeckDialog
+          open={addDeckOpen}
+          onClose={() => setAddDeckOpen(false)}
+          onSaved={() => {
+            setAddDeckOpen(false);
+            // 저장 후 덱 목록 새로고침
+            createClient()
+              .from("attack_decks")
+              .select("*")
+              .eq("defense_team_id", selectedTeamId)
+              .then(({ data }) => setDecks(data ?? []));
+          }}
+          teamId={selectedTeamId}
+          playerNickname={playerNickname}
+        />
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 공격덱 추가 다이얼로그
+// ────────────────────────────────────────────────
+const SPEED_TYPES: SpeedType[] = ["속공 따야 함", "내줘도 됨"];
+const FORMATION_TYPES: FormationType[] = ["기본", "밸런스", "공격", "보호"];
+
+function AddDeckDialog({
+  open, onClose, onSaved, teamId, playerNickname,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  teamId: string;
+  playerNickname: string;
+}) {
+  const empty = {
+    name: "", speed_type: "" as SpeedType | "",
+    ring: "", pet: "",
+    formation_type: "" as FormationType | "",
+    formation: "", skill_order: "", equipment: "",
+  };
+  const [form, setForm] = useState(empty);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function reset() { setForm(empty); setError(""); }
+  const set = (key: keyof typeof form) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+      setForm((p) => ({ ...p, [key]: e.target.value }));
+
+  async function handleSave() {
+    if (!form.name.trim()) { setError("덱 이름을 입력하세요."); return; }
+    setSaving(true);
+    const { error: err } = await createClient()
+      .from("attack_decks")
+      .insert({
+        defense_team_id: teamId,
+        name: form.name.trim(),
+        speed_type: form.speed_type || null,
+        ring: form.ring || null,
+        pet: form.pet || null,
+        formation_type: form.formation_type || null,
+        formation: form.formation || null,
+        skill_order: form.skill_order || null,
+        equipment: form.equipment || null,
+        created_by: playerNickname,
+      });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    reset();
+    onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
+      <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
+        <div className="space-y-4">
+          <h2 className="text-lg font-bold">공격덱 추가</h2>
+
+          <Field label="덱 이름 *">
+            <Input placeholder="예: 브브 여포 풍연" value={form.name} onChange={set("name")} />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="속공">
+              <select value={form.speed_type} onChange={set("speed_type")}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="">선택 안 함</option>
+                {SPEED_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="진형">
+              <select value={form.formation_type} onChange={set("formation_type")}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+                <option value="">선택 안 함</option>
+                {FORMATION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="반지">
+              <Input placeholder="반지 이름" value={form.ring} onChange={set("ring")} />
+            </Field>
+            <Field label="펫">
+              <Input placeholder="펫 이름" value={form.pet} onChange={set("pet")} />
+            </Field>
+          </div>
+
+          <Field label="진형 구성 (캐릭터 순서)">
+            <Input placeholder="예: 브브 여포 풍연" value={form.formation} onChange={set("formation")} />
+          </Field>
+          <Field label="스킬 순서">
+            <Input placeholder="예: 브브 → 여포 → 풍연" value={form.skill_order} onChange={set("skill_order")} />
+          </Field>
+          <Field label="장비 / 특이사항">
+            <Input placeholder="예: 공격력 위주 세팅" value={form.equipment} onChange={set("equipment")} />
+          </Field>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => { reset(); onClose(); }}>취소</Button>
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>
+              {saving ? "저장 중..." : "저장"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs text-muted-foreground">{label}</label>
+      {children}
     </div>
   );
 }
