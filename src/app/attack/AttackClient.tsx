@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Swords, ChevronDown, Trophy, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Swords, ChevronDown, Trophy, Plus, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import type { AttackDeck, FormationType, SpeedType } from "@/types";
@@ -19,10 +19,7 @@ interface Props {
 type SortKey = "winrate" | "usage" | "recent" | "games";
 
 const SORT_LABELS: Record<SortKey, string> = {
-  winrate: "승률순",
-  usage: "사용횟수",
-  recent: "최근사용",
-  games: "전적순",
+  winrate: "승률순", usage: "사용횟수", recent: "최근사용", games: "전적순",
 };
 
 const FORMATION_COLOR: Record<FormationType, string> = {
@@ -31,6 +28,9 @@ const FORMATION_COLOR: Record<FormationType, string> = {
   공격: "bg-red-500/20 text-red-400",
   보호: "bg-blue-500/20 text-blue-400",
 };
+
+const SPEED_TYPES: SpeedType[] = ["속공 따야 함", "내줘도 됨"];
+const FORMATION_TYPES: FormationType[] = ["기본", "밸런스", "공격", "보호"];
 
 function winRate(deck: AttackDeck) {
   const total = deck.wins + deck.losses;
@@ -55,41 +55,34 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
   const [loadingDecks, setLoadingDecks] = useState(false);
   const [selectedDeck, setSelectedDeck] = useState<AttackDeck | null>(null);
   const [addDeckOpen, setAddDeckOpen] = useState(false);
+  const [editDeck, setEditDeck] = useState<AttackDeck | null>(null);
 
   const filteredTeams = initialTeams.filter((t) => t.title.includes(search));
   const selectedTeam = initialTeams.find((t) => t.id === selectedTeamId);
 
-  // 팀 선택 시 해당 팀의 공격덱 로드
-  useEffect(() => {
-    if (!selectedTeamId) {
-      setDecks([]);
-      return;
-    }
+  async function loadDecks(teamId: string) {
     setLoadingDecks(true);
-    createClient()
-      .from("attack_decks")
-      .select("*")
-      .eq("defense_team_id", selectedTeamId)
-      .then(({ data }) => {
-        setDecks(data ?? []);
-        setLoadingDecks(false);
-      });
+    const { data } = await createClient().from("attack_decks").select("*").eq("defense_team_id", teamId);
+    setDecks(data ?? []);
+    setLoadingDecks(false);
+  }
+
+  useEffect(() => {
+    if (!selectedTeamId) { setDecks([]); return; }
+    loadDecks(selectedTeamId);
   }, [selectedTeamId]);
 
   async function recordResult(deckId: string, result: "승" | "패") {
     await createClient().rpc("record_attack_result", {
-      p_deck_id: deckId,
-      p_result: result,
-      p_player: playerNickname,
+      p_deck_id: deckId, p_result: result, p_player: playerNickname,
     });
-    // 기록 후 덱 목록 새로고침
-    if (selectedTeamId) {
-      const { data } = await createClient()
-        .from("attack_decks")
-        .select("*")
-        .eq("defense_team_id", selectedTeamId);
-      setDecks(data ?? []);
-    }
+    if (selectedTeamId) await loadDecks(selectedTeamId);
+  }
+
+  async function handleDeleteDeck(deck: AttackDeck) {
+    if (!confirm(`"${deck.name}" 공격덱을 삭제할까요?`)) return;
+    await createClient().from("attack_decks").delete().eq("id", deck.id);
+    if (selectedTeamId) await loadDecks(selectedTeamId);
   }
 
   const sortedDecks = sortDecks(decks, sort);
@@ -97,21 +90,10 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Swords size={22} />
-          길드전 공격기록
-        </h1>
-        <Button
-          size="sm"
-          className="gap-1.5"
-          disabled={!selectedTeamId}
-          onClick={() => setAddDeckOpen(true)}
-        >
-          <Plus size={14} />
-          공격덱 추가
-        </Button>
-      </div>
+      <h1 className="text-2xl font-bold flex items-center gap-2">
+        <Swords size={22} />
+        길드전 공격기록
+      </h1>
 
       {/* 방어팀 선택 드롭다운 */}
       <div className="relative">
@@ -182,53 +164,82 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
         </p>
       ) : loadingDecks ? (
         <p className="text-center text-muted-foreground text-sm py-12">불러오는 중...</p>
-      ) : sortedDecks.length === 0 ? (
-        <p className="text-center text-muted-foreground text-sm py-12">등록된 공격덱이 없습니다.</p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {sortedDecks.map((deck) => {
-            const rate = winRate(deck);
-            return (
-              <button key={deck.id} onClick={() => setSelectedDeck(deck)} className="text-left">
-                <Card className="hover:bg-accent/20 transition-colors cursor-pointer">
-                  <CardHeader className="pb-2 pt-4 px-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-semibold text-sm">{deck.name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{deck.created_by}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className={cn(
-                          "text-lg font-black",
-                          rate >= 70 ? "text-green-400" : rate >= 50 ? "text-yellow-400" : "text-red-400"
-                        )}>
-                          {rate}%
-                        </div>
-                        <div className="text-xs text-muted-foreground">{deck.wins}승 {deck.losses}패</div>
-                      </div>
+        <>
+          {sortedDecks.length === 0 ? (
+            <p className="text-center text-muted-foreground text-sm py-8">등록된 공격덱이 없습니다.</p>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {sortedDecks.map((deck) => {
+                const rate = winRate(deck);
+                return (
+                  <div key={deck.id} className="relative group">
+                    <button onClick={() => setSelectedDeck(deck)} className="w-full text-left">
+                      <Card className="hover:bg-accent/20 transition-colors cursor-pointer">
+                        <CardHeader className="pb-2 pt-4 px-4">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className="font-semibold text-sm">{deck.name}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{deck.created_by}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className={cn("text-lg font-black", rate >= 70 ? "text-green-400" : rate >= 50 ? "text-yellow-400" : "text-red-400")}>
+                                {rate}%
+                              </div>
+                              <div className="text-xs text-muted-foreground">{deck.wins}승 {deck.losses}패</div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="px-4 pb-4 flex flex-wrap gap-1.5">
+                          {deck.speed_type && (
+                            <Badge variant="outline" className={deck.speed_type === "속공 따야 함" ? "border-yellow-500 text-yellow-400 text-xs" : "text-xs"}>
+                              ⚡ {deck.speed_type}
+                            </Badge>
+                          )}
+                          {deck.formation_type && (
+                            <span className={cn("rounded px-2 py-0.5 text-xs font-medium", FORMATION_COLOR[deck.formation_type])}>
+                              {deck.formation_type}
+                            </span>
+                          )}
+                          {deck.ring && <span className="text-xs text-muted-foreground">💍 {deck.ring}</span>}
+                        </CardContent>
+                      </Card>
+                    </button>
+                    {/* 수정/삭제 버튼 */}
+                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setEditDeck(deck); }}
+                        className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-foreground shadow-sm"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteDeck(deck); }}
+                        className="rounded-md p-1.5 bg-card border border-border text-muted-foreground hover:text-red-400 shadow-sm"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
-                  </CardHeader>
-                  <CardContent className="px-4 pb-4 flex flex-wrap gap-1.5">
-                    {deck.speed_type && (
-                      <Badge variant="outline" className={deck.speed_type === "속공 따야 함" ? "border-yellow-500 text-yellow-400 text-xs" : "text-xs"}>
-                        ⚡ {deck.speed_type}
-                      </Badge>
-                    )}
-                    {deck.formation_type && (
-                      <span className={cn("rounded px-2 py-0.5 text-xs font-medium", FORMATION_COLOR[deck.formation_type])}>
-                        {deck.formation_type}
-                      </span>
-                    )}
-                    {deck.ring && <span className="text-xs text-muted-foreground">💍 {deck.ring}</span>}
-                  </CardContent>
-                </Card>
-              </button>
-            );
-          })}
-        </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 공격덱 추가 버튼 — 팀 선택 후 인라인 표시 */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-1.5 text-xs"
+            onClick={() => setAddDeckOpen(true)}
+          >
+            <Plus size={12} />
+            이 방어팀 공략 덱 추가
+          </Button>
+        </>
       )}
 
-      {/* 시즌 랭킹 */}
+      {/* 랭킹 */}
       {ranking.length > 0 && (
         <Card>
           <CardHeader className="pb-2 pt-4 px-4">
@@ -243,9 +254,7 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
                 <span className={cn(
                   "w-5 text-center font-black shrink-0",
                   i === 0 ? "text-yellow-400" : i === 1 ? "text-slate-400" : i === 2 ? "text-amber-700" : "text-muted-foreground"
-                )}>
-                  {i + 1}
-                </span>
+                )}>{i + 1}</span>
                 <span className="flex-1 truncate">{deck.name}</span>
                 <span className={cn("font-bold shrink-0", winRate(deck) >= 70 ? "text-green-400" : "text-muted-foreground")}>
                   {winRate(deck)}%
@@ -256,27 +265,30 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
         </Card>
       )}
 
-      <DeckDialog
-        deck={selectedDeck}
-        onClose={() => setSelectedDeck(null)}
-        onRecord={recordResult}
-      />
+      {/* 다이얼로그들 */}
+      <DeckDialog deck={selectedDeck} onClose={() => setSelectedDeck(null)} onRecord={recordResult} />
 
       {selectedTeamId && (
-        <AddDeckDialog
+        <DeckFormDialog
           open={addDeckOpen}
-          onClose={() => setAddDeckOpen(false)}
-          onSaved={() => {
-            setAddDeckOpen(false);
-            // 저장 후 덱 목록 새로고침
-            createClient()
-              .from("attack_decks")
-              .select("*")
-              .eq("defense_team_id", selectedTeamId)
-              .then(({ data }) => setDecks(data ?? []));
-          }}
+          title="공격덱 추가"
+          initialDeck={null}
           teamId={selectedTeamId}
           playerNickname={playerNickname}
+          onClose={() => setAddDeckOpen(false)}
+          onSaved={() => { setAddDeckOpen(false); loadDecks(selectedTeamId); }}
+        />
+      )}
+
+      {editDeck && selectedTeamId && (
+        <DeckFormDialog
+          open={!!editDeck}
+          title="공격덱 수정"
+          initialDeck={editDeck}
+          teamId={selectedTeamId}
+          playerNickname={playerNickname}
+          onClose={() => setEditDeck(null)}
+          onSaved={() => { setEditDeck(null); loadDecks(selectedTeamId); }}
         />
       )}
     </div>
@@ -284,68 +296,61 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
 }
 
 // ────────────────────────────────────────────────
-// 공격덱 추가 다이얼로그
+// 공격덱 추가/수정 공통 폼
 // ────────────────────────────────────────────────
-const SPEED_TYPES: SpeedType[] = ["속공 따야 함", "내줘도 됨"];
-const FORMATION_TYPES: FormationType[] = ["기본", "밸런스", "공격", "보호"];
-
-function AddDeckDialog({
-  open, onClose, onSaved, teamId, playerNickname,
+function DeckFormDialog({
+  open, title, initialDeck, teamId, playerNickname, onClose, onSaved,
 }: {
   open: boolean;
-  onClose: () => void;
-  onSaved: () => void;
+  title: string;
+  initialDeck: AttackDeck | null;
   teamId: string;
   playerNickname: string;
+  onClose: () => void;
+  onSaved: () => void;
 }) {
-  const empty = {
-    name: "", speed_type: "" as SpeedType | "",
-    ring: "", pet: "",
-    formation_type: "" as FormationType | "",
-    formation: "", skill_order: "", equipment: "",
-  };
-  const [form, setForm] = useState(empty);
+  const empty = { name: "", speed_type: "" as SpeedType | "", ring: "", pet: "", formation_type: "" as FormationType | "", formation: "", skill_order: "", equipment: "" };
+  const [form, setForm] = useState(initialDeck
+    ? { name: initialDeck.name, speed_type: initialDeck.speed_type ?? "" as SpeedType | "", ring: initialDeck.ring ?? "", pet: initialDeck.pet ?? "", formation_type: initialDeck.formation_type ?? "" as FormationType | "", formation: initialDeck.formation ?? "", skill_order: initialDeck.skill_order ?? "", equipment: initialDeck.equipment ?? "" }
+    : empty
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function reset() { setForm(empty); setError(""); }
-  const set = (key: keyof typeof form) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((p) => ({ ...p, [key]: e.target.value }));
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm((p) => ({ ...p, [key]: e.target.value }));
 
   async function handleSave() {
     if (!form.name.trim()) { setError("덱 이름을 입력하세요."); return; }
     setSaving(true);
-    const { error: err } = await createClient()
-      .from("attack_decks")
-      .insert({
-        defense_team_id: teamId,
-        name: form.name.trim(),
-        speed_type: form.speed_type || null,
-        ring: form.ring || null,
-        pet: form.pet || null,
-        formation_type: form.formation_type || null,
-        formation: form.formation || null,
-        skill_order: form.skill_order || null,
-        equipment: form.equipment || null,
-        created_by: playerNickname,
-      });
+    const payload = {
+      defense_team_id: teamId,
+      name: form.name.trim(),
+      speed_type: form.speed_type || null,
+      ring: form.ring || null,
+      pet: form.pet || null,
+      formation_type: form.formation_type || null,
+      formation: form.formation || null,
+      skill_order: form.skill_order || null,
+      equipment: form.equipment || null,
+      created_by: playerNickname,
+    };
+    const { error: err } = initialDeck
+      ? await createClient().from("attack_decks").update(payload).eq("id", initialDeck.id)
+      : await createClient().from("attack_decks").insert(payload);
     setSaving(false);
     if (err) { setError(err.message); return; }
-    reset();
     onSaved();
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-sm max-h-[90vh] overflow-y-auto">
         <div className="space-y-4">
-          <h2 className="text-lg font-bold">공격덱 추가</h2>
-
+          <h2 className="text-lg font-bold">{title}</h2>
           <Field label="덱 이름 *">
             <Input placeholder="예: 브브 여포 풍연" value={form.name} onChange={set("name")} />
           </Field>
-
           <div className="grid grid-cols-2 gap-3">
             <Field label="속공">
               <select value={form.speed_type} onChange={set("speed_type")}
@@ -368,8 +373,7 @@ function AddDeckDialog({
               <Input placeholder="펫 이름" value={form.pet} onChange={set("pet")} />
             </Field>
           </div>
-
-          <Field label="진형 구성 (캐릭터 순서)">
+          <Field label="진형 구성">
             <Input placeholder="예: 브브 여포 풍연" value={form.formation} onChange={set("formation")} />
           </Field>
           <Field label="스킬 순서">
@@ -378,14 +382,10 @@ function AddDeckDialog({
           <Field label="장비 / 특이사항">
             <Input placeholder="예: 공격력 위주 세팅" value={form.equipment} onChange={set("equipment")} />
           </Field>
-
           {error && <p className="text-xs text-red-400">{error}</p>}
-
           <div className="flex gap-2 pt-1">
-            <Button variant="outline" className="flex-1" onClick={() => { reset(); onClose(); }}>취소</Button>
-            <Button className="flex-1" onClick={handleSave} disabled={saving}>
-              {saving ? "저장 중..." : "저장"}
-            </Button>
+            <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>{saving ? "저장 중..." : "저장"}</Button>
           </div>
         </div>
       </DialogContent>
@@ -402,10 +402,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// ────────────────────────────────────────────────
+// 덱 상세 다이얼로그 (승/패 기록)
+// ────────────────────────────────────────────────
 function DeckDialog({
-  deck,
-  onClose,
-  onRecord,
+  deck, onClose, onRecord,
 }: {
   deck: AttackDeck | null;
   onClose: () => void;
@@ -440,7 +441,6 @@ function DeckDialog({
               <div className="text-xs text-muted-foreground">{deck.wins}승 {deck.losses}패</div>
             </div>
           </div>
-
           <div className="flex flex-wrap gap-2">
             {deck.speed_type && (
               <Badge variant="outline" className={deck.speed_type === "속공 따야 함" ? "border-yellow-500 text-yellow-400" : ""}>
@@ -450,7 +450,6 @@ function DeckDialog({
             {deck.ring && <Badge variant="secondary">💍 {deck.ring}</Badge>}
             {deck.pet && <Badge variant="secondary">🐾 {deck.pet}</Badge>}
           </div>
-
           <div className="space-y-2 text-sm">
             {deck.formation && (
               <div>
@@ -471,20 +470,13 @@ function DeckDialog({
               </div>
             )}
           </div>
-
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              onClick={() => handleResult("승")}
-              disabled={recording}
-              className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50"
-            >
+            <button onClick={() => handleResult("승")} disabled={recording}
+              className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50">
               🏆 승리
             </button>
-            <button
-              onClick={() => handleResult("패")}
-              disabled={recording}
-              className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50"
-            >
+            <button onClick={() => handleResult("패")} disabled={recording}
+              className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
               💀 패배
             </button>
           </div>

@@ -1,24 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { BookOpen, Plus, Search, Pencil } from "lucide-react";
+import { BookOpen, Plus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { TYPE_STYLE, HERO_TYPES } from "@/lib/constants";
+import { searchHeroes } from "@/lib/hero-search";
 import type { Hero, HeroType } from "@/types";
-
-export const TYPE_STYLE: Record<HeroType, { label: string; className: string; dot: string }> = {
-  공격형: { label: "공격형", className: "bg-red-500/20 text-red-400",    dot: "bg-red-400" },
-  마법형: { label: "마법형", className: "bg-blue-500/20 text-blue-400",   dot: "bg-blue-400" },
-  지원형: { label: "지원형", className: "bg-yellow-500/20 text-yellow-400", dot: "bg-yellow-400" },
-  만능형: { label: "만능형", className: "bg-purple-500/20 text-purple-400", dot: "bg-purple-400" },
-  방어형: { label: "방어형", className: "bg-amber-800/30 text-amber-700",  dot: "bg-amber-700" },
-};
-
-const TYPES = Object.keys(TYPE_STYLE) as HeroType[];
 
 export default function HeroesPage() {
   const [heroes, setHeroes] = useState<Hero[]>([]);
@@ -36,17 +28,16 @@ export default function HeroesPage() {
 
   useEffect(() => { fetchHeroes(); }, []);
 
-  const filtered = heroes.filter((h) => {
-    const matchQuery = !query || h.name.includes(query);
-    const matchType = typeFilter === "전체" || h.type === typeFilter;
-    return matchQuery && matchType;
-  });
-
-  // 타입별 카운트
   const counts = heroes.reduce<Record<string, number>>(
     (acc, h) => { acc[h.type ?? "미분류"] = (acc[h.type ?? "미분류"] ?? 0) + 1; return acc; },
     {}
   );
+
+  const filtered = (() => {
+    let list = typeFilter === "전체" ? heroes : heroes.filter((h) => h.type === typeFilter);
+    if (query.trim()) list = searchHeroes(list, query);
+    return list;
+  })();
 
   return (
     <div className="space-y-6">
@@ -66,16 +57,11 @@ export default function HeroesPage() {
         </Button>
       </div>
 
-      {/* 검색 */}
-      <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          placeholder="영웅 이름 검색..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          className="pl-9"
-        />
-      </div>
+      <Input
+        placeholder="영웅 이름 검색 (예: 브브, 여포...)"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
 
       {/* 타입 필터 */}
       <div className="flex flex-wrap gap-2">
@@ -90,7 +76,7 @@ export default function HeroesPage() {
         >
           전체 ({heroes.length})
         </button>
-        {TYPES.map((type) => {
+        {HERO_TYPES.map((type) => {
           const { label, className } = TYPE_STYLE[type];
           return (
             <button
@@ -108,12 +94,9 @@ export default function HeroesPage() {
           );
         })}
         {(counts["미분류"] ?? 0) > 0 && (
-          <button
-            onClick={() => setTypeFilter("전체")}
-            className="rounded-full px-3 py-1 text-xs font-medium border border-border text-muted-foreground opacity-60 hover:opacity-100 transition-colors"
-          >
+          <span className="rounded-full px-3 py-1 text-xs text-muted-foreground border border-border/60">
             미분류 ({counts["미분류"]})
-          </button>
+          </span>
         )}
       </div>
 
@@ -128,19 +111,11 @@ export default function HeroesPage() {
           {filtered.map((hero) => {
             const typeStyle = hero.type ? TYPE_STYLE[hero.type] : null;
             return (
-              <button
-                key={hero.id}
-                onClick={() => setEditTarget(hero)}
-                className="text-left group"
-              >
+              <button key={hero.id} onClick={() => setEditTarget(hero)} className="text-left group">
                 <Card className="hover:bg-accent/20 transition-colors cursor-pointer">
                   <CardContent className="pt-3.5 pb-3.5 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
-                      {typeStyle ? (
-                        <span className={`shrink-0 w-2 h-2 rounded-full ${typeStyle.dot}`} />
-                      ) : (
-                        <span className="shrink-0 w-2 h-2 rounded-full bg-border" />
-                      )}
+                      <span className={cn("shrink-0 w-2 h-2 rounded-full", typeStyle ? typeStyle.dot : "bg-border")} />
                       <p className="font-semibold truncate">{hero.name}</p>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
@@ -153,7 +128,7 @@ export default function HeroesPage() {
                           미분류
                         </span>
                       )}
-                      <Pencil size={12} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                      <Pencil size={12} className="text-muted-foreground opacity-0 group-hover:opacity-60 transition-opacity" />
                     </div>
                   </CardContent>
                 </Card>
@@ -167,14 +142,11 @@ export default function HeroesPage() {
         {filtered.length}명 표시{filtered.length !== heroes.length && ` / 전체 ${heroes.length}명`}
       </p>
 
-      {/* 영웅 추가 다이얼로그 */}
       <AddHeroDialog
         open={addOpen}
         onClose={() => setAddOpen(false)}
         onSaved={() => { setAddOpen(false); fetchHeroes(); }}
       />
-
-      {/* 영웅 타입 편집 다이얼로그 */}
       {editTarget && (
         <EditHeroDialog
           hero={editTarget}
@@ -186,16 +158,7 @@ export default function HeroesPage() {
   );
 }
 
-// ────────────────────────────────────────────────
-// 영웅 추가
-// ────────────────────────────────────────────────
-function AddHeroDialog({
-  open, onClose, onSaved,
-}: {
-  open: boolean;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function AddHeroDialog({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState("");
   const [type, setType] = useState<HeroType | "">("");
   const [saving, setSaving] = useState(false);
@@ -206,16 +169,10 @@ function AddHeroDialog({
   async function handleSave() {
     if (!name.trim()) { setError("영웅 이름을 입력하세요."); return; }
     setSaving(true);
-    const { error: err } = await createClient()
-      .from("heroes")
-      .insert({ name: name.trim(), type: type || null });
+    const { error: err } = await createClient().from("heroes").insert({ name: name.trim(), type: type || null });
     setSaving(false);
-    if (err) {
-      setError(err.code === "23505" ? "이미 존재하는 영웅 이름입니다." : err.message);
-      return;
-    }
-    reset();
-    onSaved();
+    if (err) { setError(err.code === "23505" ? "이미 존재하는 영웅 이름입니다." : err.message); return; }
+    reset(); onSaved();
   }
 
   return (
@@ -223,48 +180,29 @@ function AddHeroDialog({
       <DialogContent className="max-w-xs">
         <div className="space-y-4">
           <h2 className="text-lg font-bold">영웅 추가</h2>
-
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">영웅 이름 *</label>
-            <Input
-              placeholder="예: 손오공"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSave()}
-              autoFocus
-            />
+            <Input placeholder="예: 손오공" value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleSave()} autoFocus />
           </div>
-
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">타입</label>
             <div className="grid grid-cols-3 gap-1.5">
-              {TYPES.map((t) => {
+              {HERO_TYPES.map((t) => {
                 const { label, className } = TYPE_STYLE[t];
                 return (
-                  <button
-                    key={t}
-                    onClick={() => setType(type === t ? "" : t)}
-                    className={cn(
-                      "rounded-lg py-2 text-xs font-medium border transition-colors",
-                      type === t
-                        ? `${className} border-current`
-                        : "border-border text-muted-foreground hover:bg-accent/30"
-                    )}
-                  >
+                  <button key={t} onClick={() => setType(type === t ? "" : t)}
+                    className={cn("rounded-lg py-2 text-xs font-medium border transition-colors",
+                      type === t ? `${className} border-current` : "border-border text-muted-foreground hover:bg-accent/30")}>
                     {label}
                   </button>
                 );
               })}
             </div>
           </div>
-
           {error && <p className="text-xs text-red-400">{error}</p>}
-
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={() => { reset(); onClose(); }}>취소</Button>
-            <Button className="flex-1" onClick={handleSave} disabled={saving}>
-              {saving ? "저장 중..." : "저장"}
-            </Button>
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>{saving ? "저장 중..." : "저장"}</Button>
           </div>
         </div>
       </DialogContent>
@@ -272,27 +210,14 @@ function AddHeroDialog({
   );
 }
 
-// ────────────────────────────────────────────────
-// 영웅 타입 편집
-// ────────────────────────────────────────────────
-function EditHeroDialog({
-  hero, onClose, onSaved,
-}: {
-  hero: Hero;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
+function EditHeroDialog({ hero, onClose, onSaved }: { hero: Hero; onClose: () => void; onSaved: () => void }) {
   const [type, setType] = useState<HeroType | "">(hero.type ?? "");
   const [saving, setSaving] = useState(false);
 
   async function handleSave() {
     setSaving(true);
-    await createClient()
-      .from("heroes")
-      .update({ type: type || null })
-      .eq("id", hero.id);
-    setSaving(false);
-    onSaved();
+    await createClient().from("heroes").update({ type: type || null }).eq("id", hero.id);
+    setSaving(false); onSaved();
   }
 
   async function handleDelete() {
@@ -309,53 +234,28 @@ function EditHeroDialog({
             <h2 className="text-lg font-bold">{hero.name}</h2>
             <p className="text-xs text-muted-foreground mt-0.5">타입을 선택하세요</p>
           </div>
-
           <div className="grid grid-cols-3 gap-1.5">
-            {/* 미분류 선택 (타입 제거) */}
-            <button
-              onClick={() => setType("")}
-              className={cn(
-                "rounded-lg py-2 text-xs font-medium border transition-colors",
-                type === ""
-                  ? "bg-muted text-foreground border-foreground/30"
-                  : "border-border text-muted-foreground hover:bg-accent/30"
-              )}
-            >
+            <button onClick={() => setType("")}
+              className={cn("rounded-lg py-2 text-xs font-medium border transition-colors",
+                type === "" ? "bg-muted text-foreground border-foreground/30" : "border-border text-muted-foreground hover:bg-accent/30")}>
               미분류
             </button>
-            {TYPES.map((t) => {
+            {HERO_TYPES.map((t) => {
               const { label, className } = TYPE_STYLE[t];
               return (
-                <button
-                  key={t}
-                  onClick={() => setType(t)}
-                  className={cn(
-                    "rounded-lg py-2 text-xs font-medium border transition-colors",
-                    type === t
-                      ? `${className} border-current`
-                      : "border-border text-muted-foreground hover:bg-accent/30"
-                  )}
-                >
+                <button key={t} onClick={() => setType(t)}
+                  className={cn("rounded-lg py-2 text-xs font-medium border transition-colors",
+                    type === t ? `${className} border-current` : "border-border text-muted-foreground hover:bg-accent/30")}>
                   {label}
                 </button>
               );
             })}
           </div>
-
           <div className="flex gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2"
-              onClick={handleDelete}
-            >
-              삭제
-            </Button>
+            <Button variant="ghost" size="sm" className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2" onClick={handleDelete}>삭제</Button>
             <div className="flex-1" />
             <Button variant="outline" onClick={onClose}>취소</Button>
-            <Button onClick={handleSave} disabled={saving}>
-              {saving ? "저장 중..." : "저장"}
-            </Button>
+            <Button onClick={handleSave} disabled={saving}>{saving ? "저장 중..." : "저장"}</Button>
           </div>
         </div>
       </DialogContent>
