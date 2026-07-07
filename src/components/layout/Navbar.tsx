@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Shield, Swords, BookOpen, User, LogIn, LogOut } from "lucide-react";
+import { Shield, Swords, BookOpen, User, LogIn, LogOut, Zap, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/session";
 
 const navItems = [
   { href: "/defense", label: "방어팀 공략", icon: Shield },
-  { href: "/records", label: "수비 기록", icon: Swords },
+  { href: "/attack", label: "길드전", icon: Swords },
+  { href: "/speed-calc", label: "속공 계산기", icon: Zap },
+  { href: "/records", label: "수비 기록", icon: BarChart2 },
   { href: "/heroes", label: "영웅 도감", icon: BookOpen },
 ];
 

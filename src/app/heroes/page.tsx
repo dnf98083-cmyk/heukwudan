@@ -1,20 +1,20 @@
 import { BookOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import type { HeroType } from "@/types";
 
-const ELEMENT_COLOR: Record<string, string> = {
-  화: "bg-red-500/20 text-red-400",
-  수: "bg-blue-500/20 text-blue-400",
-  목: "bg-green-500/20 text-green-400",
-  광: "bg-yellow-500/20 text-yellow-400",
-  암: "bg-purple-500/20 text-purple-400",
+const TYPE_STYLE: Record<HeroType, { label: string; className: string }> = {
+  공격형: { label: "공격형", className: "bg-red-500/20 text-red-400" },
+  마법형: { label: "마법형", className: "bg-blue-500/20 text-blue-400" },
+  지원형: { label: "지원형", className: "bg-yellow-500/20 text-yellow-400" },
+  만능형: { label: "만능형", className: "bg-purple-500/20 text-purple-400" },
+  방어형: { label: "방어형", className: "bg-amber-800/30 text-amber-700" },
 };
 
 const DUMMY_HEROES = [
-  { id: "h1", name: "여포", role: "딜러", element: "화", description: "고단일 딜러" },
-  { id: "h2", name: "브브", role: "서폿", element: "광", description: "버프형 서포터" },
-  { id: "h3", name: "칼헬론", role: "탱커", element: "암", description: "방어형 탱커" },
+  { id: "h1", name: "여포", type: "공격형" as HeroType, description: "고단일 딜러" },
+  { id: "h2", name: "브브", type: "지원형" as HeroType, description: "버프형 서포터" },
+  { id: "h3", name: "칼헬론", type: "방어형" as HeroType, description: "방어형 탱커" },
 ];
 
 export default function HeroesPage() {
@@ -27,7 +27,7 @@ export default function HeroesPage() {
             영웅 도감
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            세나리버스 영웅 정보 모음
+            등록된 영웅 목록 — 방어팀 공략 검색에 사용됩니다.
           </p>
         </div>
         <Button size="sm" className="gap-1.5">
@@ -36,33 +36,38 @@ export default function HeroesPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {DUMMY_HEROES.map((hero) => (
-          <Card key={hero.id} className="hover:bg-accent/20 transition-colors">
-            <CardContent className="pt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">{hero.name}</span>
-                {hero.element && (
-                  <span
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      ELEMENT_COLOR[hero.element] ?? "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {hero.element}
+      {/* 타입 범례 */}
+      <div className="flex flex-wrap gap-2">
+        {(Object.entries(TYPE_STYLE) as [HeroType, { label: string; className: string }][]).map(
+          ([, { label, className }]) => (
+            <span key={label} className={`rounded px-2 py-0.5 text-xs font-medium ${className}`}>
+              {label}
+            </span>
+          )
+        )}
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {DUMMY_HEROES.map((hero) => {
+          const typeStyle = hero.type ? TYPE_STYLE[hero.type] : null;
+          return (
+            <Card key={hero.id} className="hover:bg-accent/20 transition-colors">
+              <CardContent className="pt-4 flex items-center justify-between gap-3">
+                <div>
+                  <p className="font-semibold">{hero.name}</p>
+                  {hero.description && (
+                    <p className="text-xs text-muted-foreground mt-0.5">{hero.description}</p>
+                  )}
+                </div>
+                {typeStyle && (
+                  <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${typeStyle.className}`}>
+                    {typeStyle.label}
                   </span>
                 )}
-              </div>
-              {hero.role && (
-                <Badge variant="outline" className="text-xs">
-                  {hero.role}
-                </Badge>
-              )}
-              {hero.description && (
-                <p className="text-xs text-muted-foreground">{hero.description}</p>
-              )}
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
