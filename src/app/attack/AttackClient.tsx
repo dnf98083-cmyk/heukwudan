@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Swords, ChevronDown, Plus, Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Swords, ChevronDown, Plus, Pencil, Trash2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
@@ -517,6 +518,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// 성 목록 — 실제 길드전 구조에 맞게 수정 가능
+const CASTLE_TYPES = ["외성 1", "외성 2", "외성 3", "내성", "본성"];
+
 // ────────────────────────────────────────────────
 // 덱 상세 다이얼로그 (승/패 기록)
 // ────────────────────────────────────────────────
@@ -528,16 +532,18 @@ function DeckDialog({
   onRecord: (deckId: string, result: "승" | "패") => Promise<void>;
   playerNickname: string;
 }) {
+  const router = useRouter();
   const [recording, setRecording] = useState(false);
-  // 패배 후 속공 메모 단계
-  const [showSpeedNote, setShowSpeedNote] = useState(false);
-  const [speedNote, setSpeedNote] = useState("");
-  const [savingNote, setSavingNote] = useState(false);
+  const [showDefeatForm, setShowDefeatForm] = useState(false);
+  const [castleType, setCastleType] = useState(CASTLE_TYPES[0]);
+  const [opponentName, setOpponentName] = useState("");
+  const [saving, setSaving] = useState(false);
   const [latestRecordId, setLatestRecordId] = useState<string | null>(null);
 
   function handleClose() {
-    setShowSpeedNote(false);
-    setSpeedNote("");
+    setShowDefeatForm(false);
+    setCastleType(CASTLE_TYPES[0]);
+    setOpponentName("");
     setLatestRecordId(null);
     onClose();
   }
@@ -548,7 +554,6 @@ function DeckDialog({
     await onRecord(deck.id, result);
 
     if (result === "패") {
-      // 가장 최근 기록 ID를 가져와서 속공 메모 단계로 전환
       const { data } = await createClient()
         .from("guild_war_records")
         .select("id")
@@ -559,28 +564,98 @@ function DeckDialog({
         .single();
       setLatestRecordId(data?.id ?? null);
       setRecording(false);
-      setShowSpeedNote(true);
+      setShowDefeatForm(true);
     } else {
       setRecording(false);
       handleClose();
     }
   }
 
-  async function handleSaveNote() {
-    if (latestRecordId && speedNote.trim()) {
-      setSavingNote(true);
-      await createClient()
-        .from("guild_war_records")
-        .update({ note: speedNote.trim() })
-        .eq("id", latestRecordId);
-      setSavingNote(false);
-    }
+  async function saveDefeatInfo() {
+    if (!latestRecordId) return;
+    setSaving(true);
+    await createClient()
+      .from("guild_war_records")
+      .update({ castle_type: castleType, opponent_name: opponentName.trim() || null })
+      .eq("id", latestRecordId);
+    setSaving(false);
+  }
+
+  async function handleSkip() {
+    await saveDefeatInfo();
     handleClose();
+  }
+
+  async function handleSpeedCalc() {
+    await saveDefeatInfo();
+    handleClose();
+    router.push("/speed-calc");
   }
 
   if (!deck) return null;
   const rate = winRate(deck);
 
+  // ── 패배 기록 폼 ──
+  if (showDefeatForm) {
+    return (
+      <Dialog open onOpenChange={handleClose}>
+        <DialogContent className="max-w-sm">
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold flex items-center gap-2">
+              💀 패배 기록
+            </h2>
+            <div className="rounded-lg bg-muted/20 border border-border/40 px-3 py-2 text-xs text-muted-foreground">
+              패배한 상대의 속공을 기록하면 다음 공격 시 참고할 수 있습니다.
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium flex items-center gap-1.5">🏰 공격한 성</label>
+              <select
+                value={castleType}
+                onChange={(e) => setCastleType(e.target.value)}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                {CASTLE_TYPES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium flex items-center gap-1.5">🎭 상대 닉네임</label>
+              <Input
+                value={opponentName}
+                onChange={(e) => setOpponentName(e.target.value)}
+                placeholder="상대 닉네임 입력"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium flex items-center gap-1.5">✗ 사용한 공격덱</label>
+              <div className="rounded-md border border-border/50 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
+                {deck.name}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={handleSkip}
+                disabled={saving}
+                className="py-2.5 rounded-lg text-sm border border-border text-muted-foreground hover:bg-accent/30 transition-colors disabled:opacity-50"
+              >
+                건너뛰기 (기록만)
+              </button>
+              <button
+                onClick={handleSpeedCalc}
+                disabled={saving}
+                className="py-2.5 rounded-lg text-sm font-bold bg-yellow-500 hover:bg-yellow-400 text-black transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                <Zap size={14} />
+                속공 계산하기
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── 덱 상세 + 승/패 버튼 ──
   return (
     <Dialog open={!!deck} onOpenChange={handleClose}>
       <DialogContent className="max-w-sm">
@@ -631,45 +706,16 @@ function DeckDialog({
               </div>
             )}
           </div>
-          {!showSpeedNote ? (
-            <div className="grid grid-cols-2 gap-3 pt-2">
-              <button onClick={() => handleResult("승")} disabled={recording}
-                className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50">
-                🏆 승리
-              </button>
-              <button onClick={() => handleResult("패")} disabled={recording}
-                className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
-                {recording ? "기록 중..." : "💀 패배"}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3 pt-1">
-              <div className="rounded-lg bg-red-950/30 border border-red-800/40 px-3 py-2">
-                <p className="text-xs font-semibold text-red-400">💀 패배 기록됨</p>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">⚡ 속공 메모 (선택)</label>
-                <textarea
-                  value={speedNote}
-                  onChange={(e) => setSpeedNote(e.target.value)}
-                  placeholder={"예: 속공 잃음 — 상대 315 / 내 310\n예: 속공 따냄 — 상대 290 / 내 300"}
-                  rows={3}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  autoFocus
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={handleClose}
-                  className="py-2 rounded-lg text-sm border border-border text-muted-foreground hover:bg-accent/30 transition-colors">
-                  건너뛰기
-                </button>
-                <button onClick={handleSaveNote} disabled={savingNote}
-                  className="py-2 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 font-semibold">
-                  {savingNote ? "저장 중..." : "저장"}
-                </button>
-              </div>
-            </div>
-          )}
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button onClick={() => handleResult("승")} disabled={recording}
+              className="py-3 rounded-lg font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors disabled:opacity-50">
+              🏆 승리
+            </button>
+            <button onClick={() => handleResult("패")} disabled={recording}
+              className="py-3 rounded-lg font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+              {recording ? "기록 중..." : "💀 패배"}
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
