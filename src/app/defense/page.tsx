@@ -23,6 +23,7 @@ export default function DefensePage() {
     const { data } = await createClient()
       .from("defense_teams")
       .select("*, strategies:defense_strategies(*)")
+      .eq("team_type", "our")
       .order("display_order");
     setTeams(data ?? []);
     setLoading(false);
@@ -49,11 +50,11 @@ export default function DefensePage() {
             <Shield size={22} />
             방어팀 공략
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">상대 방어팀 구성별 공략을 관리하세요.</p>
+          <p className="text-sm text-muted-foreground mt-1">우리 길드 방어팀 구성과 공략 안을 관리하세요.</p>
         </div>
         <Button size="sm" className="gap-1.5" onClick={() => setAddTeamOpen(true)}>
           <Plus size={14} />
-          상대 방어덱 추가
+          방어팀 추가
         </Button>
       </div>
 
@@ -71,7 +72,7 @@ export default function DefensePage() {
         <p className="text-center text-muted-foreground text-sm py-12">불러오는 중...</p>
       ) : filtered.length === 0 ? (
         <p className="text-center text-muted-foreground text-sm py-12">
-          {teams.length === 0 ? "등록된 방어팀이 없습니다." : "검색 결과가 없습니다."}
+          {teams.length === 0 ? "등록된 우리 방어팀이 없습니다." : "검색 결과가 없습니다."}
         </p>
       ) : (
         <div className="grid gap-6">
@@ -249,7 +250,7 @@ function AddTeamDialog({
     setSaving(true);
     const { error: err } = await createClient()
       .from("defense_teams")
-      .insert({ title: title.trim(), hero_names: heroes, display_order: nextOrder });
+      .insert({ title: title.trim(), hero_names: heroes, display_order: nextOrder, team_type: "our" });
     setSaving(false);
     if (err) { setError(err.message); return; }
     reset(); onSaved();
@@ -259,7 +260,7 @@ function AddTeamDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
       <DialogContent className="max-w-sm">
         <div className="space-y-4">
-          <h2 className="text-lg font-bold">상대 방어덱 추가</h2>
+          <h2 className="text-lg font-bold">우리 방어팀 추가</h2>
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground">팀 이름 *</label>
             <Input placeholder="예: 여포 브브 칼헬론" value={title} onChange={(e) => setTitle(e.target.value)} />

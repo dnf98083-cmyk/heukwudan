@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { HeroPicker } from "@/components/ui/HeroPicker";
 import type { AttackDeck, FormationType, SpeedType } from "@/types";
 
 interface Props {
@@ -47,6 +48,7 @@ function sortDecks(decks: AttackDeck[], key: SortKey) {
 }
 
 export default function AttackClient({ initialTeams, playerNickname }: Props) {
+  const [teams, setTeams] = useState(initialTeams);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -56,9 +58,19 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
   const [selectedDeck, setSelectedDeck] = useState<AttackDeck | null>(null);
   const [addDeckOpen, setAddDeckOpen] = useState(false);
   const [editDeck, setEditDeck] = useState<AttackDeck | null>(null);
+  const [addEnemyOpen, setAddEnemyOpen] = useState(false);
 
-  const filteredTeams = initialTeams.filter((t) => t.title.includes(search));
-  const selectedTeam = initialTeams.find((t) => t.id === selectedTeamId);
+  const filteredTeams = teams.filter((t) => t.title.includes(search));
+  const selectedTeam = teams.find((t) => t.id === selectedTeamId);
+
+  async function refreshTeams() {
+    const { data } = await createClient()
+      .from("defense_teams")
+      .select("id, title")
+      .eq("team_type", "enemy")
+      .order("display_order");
+    setTeams(data ?? []);
+  }
 
   async function loadDecks(teamId: string) {
     setLoadingDecks(true);
@@ -90,10 +102,16 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <Swords size={22} />
-        길드전 공격기록
-      </h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <Swords size={22} />
+          길드전 공격기록
+        </h1>
+        <Button size="sm" className="gap-1.5" onClick={() => setAddEnemyOpen(true)}>
+          <Plus size={14} />
+          상대 방어팀 추가
+        </Button>
+      </div>
 
       {/* 방어팀 선택 드롭다운 */}
       <div className="relative">
@@ -268,6 +286,13 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
       {/* 다이얼로그들 */}
       <DeckDialog deck={selectedDeck} onClose={() => setSelectedDeck(null)} onRecord={recordResult} />
 
+      <AddEnemyTeamDialog
+        open={addEnemyOpen}
+        onClose={() => setAddEnemyOpen(false)}
+        onSaved={async () => { setAddEnemyOpen(false); await refreshTeams(); }}
+        nextOrder={teams.length + 1}
+      />
+
       {selectedTeamId && (
         <DeckFormDialog
           open={addDeckOpen}
@@ -292,6 +317,63 @@ export default function AttackClient({ initialTeams, playerNickname }: Props) {
         />
       )}
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────
+// 상대 방어팀 추가
+// ────────────────────────────────────────────────
+function AddEnemyTeamDialog({
+  open, onClose, onSaved, nextOrder,
+}: {
+  open: boolean; onClose: () => void; onSaved: () => void; nextOrder: number;
+}) {
+  const [title, setTitle] = useState("");
+  const [heroes, setHeroes] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function reset() { setTitle(""); setHeroes([]); setError(""); }
+
+  async function handleSave() {
+    if (!title.trim()) { setError("팀 이름을 입력하세요."); return; }
+    setSaving(true);
+    const { error: err } = await createClient()
+      .from("defense_teams")
+      .insert({ title: title.trim(), hero_names: heroes, display_order: nextOrder, team_type: "enemy" });
+    setSaving(false);
+    if (err) { setError(err.message); return; }
+    reset(); onSaved();
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { reset(); onClose(); } }}>
+      <DialogContent className="max-w-sm">
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-bold">상대 방어팀 추가</h2>
+            <p className="text-xs text-muted-foreground mt-0.5">공략할 상대 길드의 방어팀 구성을 등록하세요.</p>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">팀 이름 *</label>
+            <Input placeholder="예: 여포 브브 칼헬론" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">영웅 구성</label>
+            <HeroPicker
+              selected={heroes}
+              onAdd={(name) => setHeroes((p) => [...p, name])}
+              onRemove={(name) => setHeroes((p) => p.filter((h) => h !== name))}
+            />
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button variant="outline" className="flex-1" onClick={() => { reset(); onClose(); }}>취소</Button>
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>{saving ? "저장 중..." : "저장"}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

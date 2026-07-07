@@ -13,6 +13,7 @@ export default async function AttackPage() {
   const { data: teams } = await supabase
     .from("defense_teams")
     .select("id, title")
+    .eq("team_type", "enemy")
     .order("display_order");
 
   return (
