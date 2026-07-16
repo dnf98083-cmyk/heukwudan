@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Shield, Swords, BookOpen, User, LogIn, LogOut, Zap, Trophy } from "lucide-react";
+import { Shield, Swords, BookOpen, User, LogIn, LogOut, Zap, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/session";
@@ -59,6 +59,20 @@ export default function Navbar({ user }: NavbarProps) {
               {label}
             </Link>
           ))}
+          {user && (user.role === "슈퍼개발자" || user.role === "관리자") && (
+            <Link
+              href="/admin"
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                pathname.startsWith("/admin")
+                  ? "bg-accent text-accent-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+              )}
+            >
+              <Users size={15} />
+              회원관리
+            </Link>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
