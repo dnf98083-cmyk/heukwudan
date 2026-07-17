@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, Plus, Search, Pencil, Trash2 } from "lucide-react";
+import { Shield, Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +100,7 @@ export default function DefensePage() {
 function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => void }) {
   const [addStratOpen, setAddStratOpen] = useState(false);
   const [editTeamOpen, setEditTeamOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   const strategies: DefenseStrategy[] = (team.strategies ?? []).sort(
     (a, b) => a.strategy_num - b.strategy_num
@@ -149,21 +150,37 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {strategies.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-2">등록된 공략 안이 없습니다.</p>
-        ) : (
-          strategies.map((s) => (
-            <StrategyCard key={s.id} strategy={s} onRefresh={onRefresh} />
-          ))
-        )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full gap-1.5 text-xs"
-          onClick={() => setAddStratOpen(true)}
+        {/* 공략 안 토글 버튼 */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
         >
-          <Plus size={12} />공략 안 추가
-        </Button>
+          <span>
+            공략 안{" "}
+            <span className="font-semibold text-foreground">{strategies.length}개</span>
+          </span>
+          {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+
+        {expanded && (
+          <>
+            {strategies.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-2">등록된 공략 안이 없습니다.</p>
+            ) : (
+              strategies.map((s) => (
+                <StrategyCard key={s.id} strategy={s} onRefresh={onRefresh} />
+              ))
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5 text-xs"
+              onClick={() => setAddStratOpen(true)}
+            >
+              <Plus size={12} />공략 안 추가
+            </Button>
+          </>
+        )}
       </CardContent>
 
       <AddStrategyDialog
