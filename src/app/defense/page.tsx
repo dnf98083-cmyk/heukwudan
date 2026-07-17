@@ -212,6 +212,7 @@ function DefenseStats({ teamId }: { teamId: string }) {
   const [records, setRecords] = useState<DefenseRec[]>([]);
   const [loading, setLoading] = useState(true);
   const [addOpen, setAddOpen] = useState(false);
+  const [quickSaving, setQuickSaving] = useState<string | null>(null);
 
   async function fetchRecords() {
     setLoading(true);
@@ -222,26 +223,40 @@ function DefenseStats({ teamId }: { teamId: string }) {
 
   useEffect(() => { fetchRecords(); }, [teamId]);
 
+  async function quickRecord(heroes: string[], result: "승" | "패") {
+    const key = heroes.sort().join(",") + result;
+    setQuickSaving(key);
+    await fetch("/api/defense-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result }),
+    });
+    setQuickSaving(null);
+    fetchRecords();
+  }
+
   const groups = groupByOpponent(records);
 
   return (
     <div className="space-y-2">
       <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setAddOpen(true)}>
-        <Plus size={12} />방어 기록 추가
+        <Plus size={12} />기록 추가 (신규 덱)
       </Button>
 
       {loading ? (
         <p className="text-xs text-muted-foreground text-center py-3">불러오는 중...</p>
       ) : groups.length === 0 ? (
-        <p className="text-xs text-muted-foreground text-center py-3">기록된 방어전이 없습니다.</p>
+        <p className="text-xs text-muted-foreground text-center py-4">기록된 방어전이 없습니다.</p>
       ) : (
         groups.map((g) => {
           const total = g.wins + g.losses;
           const rate = Math.round((g.wins / total) * 100);
+          const winKey = g.heroes.slice().sort().join(",") + "승";
+          const loseKey = g.heroes.slice().sort().join(",") + "패";
           return (
             <div key={g.key} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                {/* 상대 영웅 */}
+              {/* 상대 영웅 + 승률 */}
+              <div className="flex items-start justify-between gap-2">
                 <div className="flex flex-wrap gap-1 flex-1">
                   {g.heroes.length > 0 ? g.heroes.map((h) => (
                     <span key={h} className="text-[10px] px-1.5 py-0.5 rounded border border-red-500/30 bg-red-900/10 text-red-300">
@@ -249,17 +264,35 @@ function DefenseStats({ teamId }: { teamId: string }) {
                     </span>
                   )) : <span className="text-[10px] text-muted-foreground">영웅 미입력</span>}
                 </div>
-                {/* 승률 */}
                 <div className="text-right shrink-0">
                   <p className={cn(
-                    "text-base font-black",
+                    "text-sm font-black leading-none",
                     rate >= 70 ? "text-green-400" : rate >= 50 ? "text-yellow-400" : "text-red-400"
                   )}>
                     {rate}%
                   </p>
-                  <p className="text-[10px] text-muted-foreground">{g.wins}승 {g.losses}패</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">{g.wins}승 {g.losses}패</p>
                 </div>
               </div>
+
+              {/* 빠른 승/패 버튼 */}
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => quickRecord(g.heroes, "승")}
+                  disabled={quickSaving === winKey}
+                  className="flex-1 py-1 rounded text-[11px] font-semibold border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 disabled:opacity-40 transition-colors"
+                >
+                  {quickSaving === winKey ? "..." : "+승"}
+                </button>
+                <button
+                  onClick={() => quickRecord(g.heroes, "패")}
+                  disabled={quickSaving === loseKey}
+                  className="flex-1 py-1 rounded text-[11px] font-semibold border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
+                >
+                  {quickSaving === loseKey ? "..." : "+패"}
+                </button>
+              </div>
+
               {/* 메모 */}
               {g.memos.length > 0 && (
                 <div className="border-t border-border/30 pt-1.5 space-y-0.5">
@@ -291,7 +324,6 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
   const [addStratOpen, setAddStratOpen] = useState(false);
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const [expandStats, setExpandStats] = useState(false);
 
   const strategies: DefenseStrategy[] = (team.strategies ?? []).sort(
     (a, b) => a.strategy_num - b.strategy_num
@@ -304,89 +336,88 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <CardTitle className="text-lg truncate">{team.title}</CardTitle>
-            <div className="flex gap-1.5 mt-1.5 flex-wrap">
-              {team.hero_names.map((name) => (
-                <Badge key={name} variant="secondary" className="text-xs">{name}</Badge>
-              ))}
-            </div>
-            {team.formation_slots && team.formation_slots.length > 0 && (
-              <div className="mt-3">
-                <p className="text-xs text-muted-foreground mb-1.5">진형 {team.formation_type && `(${team.formation_type})`}</p>
-                <FormationPreview slots={team.formation_slots} formationType={team.formation_type ?? "기본"} />
+    <Card className="overflow-hidden">
+      <div className="flex min-h-0">
+        {/* 왼쪽: 팀 정보 + 공략 안 */}
+        <div className="w-[280px] shrink-0 border-r border-border/30 flex flex-col">
+          <div className="flex items-start justify-between gap-2 px-4 pt-4 pb-3">
+            <div className="min-w-0">
+              <p className="text-base font-bold truncate">{team.title}</p>
+              <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                {team.hero_names.map((name) => (
+                  <Badge key={name} variant="secondary" className="text-xs">{name}</Badge>
+                ))}
               </div>
-            )}
+              {team.formation_slots && team.formation_slots.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-muted-foreground mb-1.5">진형 {team.formation_type && `(${team.formation_type})`}</p>
+                  <FormationPreview slots={team.formation_slots} formationType={team.formation_type ?? "기본"} />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setEditTeamOpen(true)}
+                className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+                title="팀 수정"
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                onClick={handleDeleteTeam}
+                className="rounded-md p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                title="팀 삭제"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
+
+          {/* 공략 안 토글 */}
+          <div className="px-4 pb-4 space-y-2">
             <button
-              onClick={() => setEditTeamOpen(true)}
-              className="rounded-md p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
-              title="팀 수정"
+              onClick={() => setExpanded((v) => !v)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
             >
-              <Pencil size={14} />
+              <span>
+                공략 안{" "}
+                <span className="font-semibold text-foreground">{strategies.length}개</span>
+              </span>
+              {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
             </button>
-            <button
-              onClick={handleDeleteTeam}
-              className="rounded-md p-1.5 text-muted-foreground hover:text-red-400 hover:bg-red-500/10 transition-colors"
-              title="팀 삭제"
-            >
-              <Trash2 size={14} />
-            </button>
+
+            {expanded && (
+              <>
+                {strategies.length === 0 ? (
+                  <p className="text-xs text-muted-foreground text-center py-2">등록된 공략 안이 없습니다.</p>
+                ) : (
+                  strategies.map((s) => (
+                    <StrategyCard key={s.id} strategy={s} onRefresh={onRefresh} />
+                  ))
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full gap-1.5 text-xs"
+                  onClick={() => setAddStratOpen(true)}
+                >
+                  <Plus size={12} />공략 안 추가
+                </Button>
+              </>
+            )}
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-3">
-        {/* 공략 안 토글 버튼 */}
-        <button
-          onClick={() => setExpanded((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
-        >
-          <span>
-            공략 안{" "}
-            <span className="font-semibold text-foreground">{strategies.length}개</span>
-          </span>
-          {expanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-        </button>
-
-        {expanded && (
-          <>
-            {strategies.length === 0 ? (
-              <p className="text-xs text-muted-foreground text-center py-2">등록된 공략 안이 없습니다.</p>
-            ) : (
-              strategies.map((s) => (
-                <StrategyCard key={s.id} strategy={s} onRefresh={onRefresh} />
-              ))
-            )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full gap-1.5 text-xs"
-              onClick={() => setAddStratOpen(true)}
-            >
-              <Plus size={12} />공략 안 추가
-            </Button>
-          </>
-        )}
-
-        {/* 방어 현황 토글 */}
-        <button
-          onClick={() => setExpandStats((v) => !v)}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
-        >
-          <span className="flex items-center gap-1.5">
-            <BarChart2 size={13} />
-            방어 현황
-          </span>
-          {expandStats ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-        </button>
-
-        {expandStats && <DefenseStats teamId={team.id} />}
-      </CardContent>
+        {/* 오른쪽: 방어 현황 (스크롤 가능) */}
+        <div className="flex-1 min-w-0 overflow-y-auto max-h-[480px]">
+          <div className="px-4 py-4">
+            <p className="text-xs font-semibold text-muted-foreground mb-3 flex items-center gap-1.5">
+              <BarChart2 size={12} />방어 현황
+            </p>
+            <DefenseStats teamId={team.id} />
+          </div>
+        </div>
+      </div>
 
       <AddStrategyDialog
         open={addStratOpen}
