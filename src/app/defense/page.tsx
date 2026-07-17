@@ -95,109 +95,191 @@ export default function DefensePage() {
 }
 
 // ────────────────────────────────────────────────
-// 공격 현황 (덱별 승률)
+// 방어 현황 (상대 공격덱별 승률)
 // ────────────────────────────────────────────────
-interface DeckStat {
+interface DefenseRec {
   id: string;
-  name: string;
-  formation_slots: Array<{ pos: number; name: string }> | null;
-  wins: number;
-  losses: number;
-  equipment: string | null;
-  skill_order: string | null;
-  speed_type: string | null;
+  team_id: string;
+  player_name: string;
+  result: "승" | "패";
+  opponent_heroes: string[];
+  memo: string | null;
+  recorded_at: string;
 }
 
-function AttackStats({ teamId }: { teamId: string }) {
-  const [decks, setDecks] = useState<DeckStat[] | null>(null);
+interface OpponentGroup {
+  key: string;
+  heroes: string[];
+  wins: number;
+  losses: number;
+  memos: string[];
+}
+
+function groupByOpponent(records: DefenseRec[]): OpponentGroup[] {
+  const map: Record<string, OpponentGroup> = {};
+  for (const r of records) {
+    const heroes = r.opponent_heroes ?? [];
+    const key = [...heroes].sort().join(",") || "미입력";
+    if (!map[key]) map[key] = { key, heroes, wins: 0, losses: 0, memos: [] };
+    if (r.result === "승") map[key].wins++;
+    else map[key].losses++;
+    if (r.memo) map[key].memos.push(r.memo);
+  }
+  return Object.values(map).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
+}
+
+function AddDefenseRecordDialog({
+  teamId, onClose, onSaved,
+}: {
+  teamId: string; onClose: () => void; onSaved: () => void;
+}) {
+  const [heroes, setHeroes] = useState<string[]>([]);
+  const [result, setResult] = useState<"승" | "패" | null>(null);
+  const [memo, setMemo] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!result) { setError("승/패를 선택해주세요."); return; }
+    setSaving(true); setError("");
+    const res = await fetch("/api/defense-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, memo: memo || null }),
+    });
+    setSaving(false);
+    if (!res.ok) { const j = await res.json(); setError(j.error ?? "저장 실패"); return; }
+    onSaved();
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <div className="space-y-4">
+          <h2 className="text-base font-bold">방어 기록 추가</h2>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">상대 공격덱 영웅 (최대 3명)</label>
+            <HeroPicker selected={heroes} onAdd={(n) => { if (heroes.length < 3) setHeroes((p) => [...p, n]); }} onRemove={(n) => setHeroes((p) => p.filter((h) => h !== n))} maxCount={3} />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">결과</label>
+            <div className="flex gap-2">
+              {(["승", "패"] as const).map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setResult(r)}
+                  className={cn(
+                    "flex-1 py-2 rounded-lg text-sm font-bold border transition-colors",
+                    result === r
+                      ? r === "승" ? "bg-blue-500/20 border-blue-500 text-blue-300" : "bg-red-500/20 border-red-500 text-red-300"
+                      : "border-border text-muted-foreground hover:bg-accent/30"
+                  )}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">메모 (선택)</label>
+            <textarea
+              value={memo}
+              onChange={(e) => setMemo(e.target.value)}
+              rows={2}
+              placeholder="특이사항, 조건 등..."
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          <div className="flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
+            <Button className="flex-1" onClick={handleSave} disabled={saving || !result}>
+              {saving ? "저장 중..." : "저장"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DefenseStats({ teamId }: { teamId: string }) {
+  const [records, setRecords] = useState<DefenseRec[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addOpen, setAddOpen] = useState(false);
 
-  useEffect(() => {
-    createClient()
-      .from("attack_decks")
-      .select("id, name, formation_slots, wins, losses, equipment, skill_order, speed_type")
-      .eq("defense_team_id", teamId)
-      .order("wins", { ascending: false })
-      .then(({ data }) => { setDecks((data ?? []) as DeckStat[]); setLoading(false); });
-  }, [teamId]);
+  async function fetchRecords() {
+    setLoading(true);
+    const res = await fetch(`/api/defense-records?team_id=${teamId}`);
+    if (res.ok) setRecords(await res.json());
+    setLoading(false);
+  }
 
-  if (loading) return <p className="text-xs text-muted-foreground text-center py-3">불러오는 중...</p>;
-  if (!decks || decks.length === 0)
-    return <p className="text-xs text-muted-foreground text-center py-3">이 방어팀에 등록된 공격 덱이 없습니다.</p>;
+  useEffect(() => { fetchRecords(); }, [teamId]);
+
+  const groups = groupByOpponent(records);
 
   return (
     <div className="space-y-2">
-      {decks.map((deck) => {
-        const total = deck.wins + deck.losses;
-        const rate = total === 0 ? null : Math.round((deck.wins / total) * 100);
-        const heroes = (deck.formation_slots ?? [])
-          .sort((a, b) => a.pos - b.pos)
-          .map((s) => s.name)
-          .filter(Boolean);
+      <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={() => setAddOpen(true)}>
+        <Plus size={12} />방어 기록 추가
+      </Button>
 
-        return (
-          <div key={deck.id} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
-            {/* 덱 이름 + 승률 */}
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold truncate">{deck.name}</p>
-                {deck.speed_type && (
-                  <span className={cn(
-                    "text-[10px] px-1.5 py-0.5 rounded font-medium",
-                    deck.speed_type === "속공 따야 함"
-                      ? "bg-yellow-500/20 text-yellow-400"
-                      : "bg-muted text-muted-foreground"
-                  )}>
-                    {deck.speed_type}
-                  </span>
-                )}
-              </div>
-              <div className="text-right shrink-0">
-                {rate !== null ? (
+      {loading ? (
+        <p className="text-xs text-muted-foreground text-center py-3">불러오는 중...</p>
+      ) : groups.length === 0 ? (
+        <p className="text-xs text-muted-foreground text-center py-3">기록된 방어전이 없습니다.</p>
+      ) : (
+        groups.map((g) => {
+          const total = g.wins + g.losses;
+          const rate = Math.round((g.wins / total) * 100);
+          return (
+            <div key={g.key} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                {/* 상대 영웅 */}
+                <div className="flex flex-wrap gap-1 flex-1">
+                  {g.heroes.length > 0 ? g.heroes.map((h) => (
+                    <span key={h} className="text-[10px] px-1.5 py-0.5 rounded border border-red-500/30 bg-red-900/10 text-red-300">
+                      {h}
+                    </span>
+                  )) : <span className="text-[10px] text-muted-foreground">영웅 미입력</span>}
+                </div>
+                {/* 승률 */}
+                <div className="text-right shrink-0">
                   <p className={cn(
                     "text-base font-black",
                     rate >= 70 ? "text-green-400" : rate >= 50 ? "text-yellow-400" : "text-red-400"
                   )}>
                     {rate}%
                   </p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">기록 없음</p>
-                )}
-                {total > 0 && (
-                  <p className="text-[10px] text-muted-foreground">{deck.wins}승 {deck.losses}패</p>
-                )}
+                  <p className="text-[10px] text-muted-foreground">{g.wins}승 {g.losses}패</p>
+                </div>
               </div>
+              {/* 메모 */}
+              {g.memos.length > 0 && (
+                <div className="border-t border-border/30 pt-1.5 space-y-0.5">
+                  {g.memos.map((m, i) => (
+                    <p key={i} className="text-[11px] text-muted-foreground">📝 {m}</p>
+                  ))}
+                </div>
+              )}
             </div>
+          );
+        })
+      )}
 
-            {/* 영웅 구성 */}
-            {heroes.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {heroes.map((h) => (
-                  <span key={h} className="text-[10px] px-1.5 py-0.5 rounded border border-border/50 bg-background text-muted-foreground">
-                    {h}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* 장비·스킬 코멘트 */}
-            {(deck.equipment || deck.skill_order) && (
-              <div className="space-y-0.5 border-t border-border/30 pt-2">
-                {deck.skill_order && (
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="text-foreground/60 font-medium">스킬순서</span> {deck.skill_order}
-                  </p>
-                )}
-                {deck.equipment && (
-                  <p className="text-[11px] text-muted-foreground">
-                    <span className="text-foreground/60 font-medium">장비</span> {deck.equipment}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {addOpen && (
+        <AddDefenseRecordDialog
+          teamId={teamId}
+          onClose={() => setAddOpen(false)}
+          onSaved={() => { setAddOpen(false); fetchRecords(); }}
+        />
+      )}
     </div>
   );
 }
@@ -291,19 +373,19 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
           </>
         )}
 
-        {/* 공격 현황 토글 */}
+        {/* 방어 현황 토글 */}
         <button
           onClick={() => setExpandStats((v) => !v)}
           className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
         >
           <span className="flex items-center gap-1.5">
             <BarChart2 size={13} />
-            공격 현황
+            방어 현황
           </span>
           {expandStats ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
         </button>
 
-        {expandStats && <AttackStats teamId={team.id} />}
+        {expandStats && <DefenseStats teamId={team.id} />}
       </CardContent>
 
       <AddStrategyDialog
