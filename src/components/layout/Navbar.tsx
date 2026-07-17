@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Shield, Swords, BookOpen, User, LogIn, LogOut, Zap, Trophy, Users, Calendar } from "lucide-react";
@@ -7,14 +8,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/session";
 
-const navItems = [
+const navItems: { href: string; label: string; icon: React.ElementType; minRole?: UserRole }[] = [
   { href: "/attack", label: "길드전", icon: Swords },
   { href: "/guild-war", label: "오늘의 길드전", icon: Calendar },
   { href: "/defense", label: "방어팀 공략", icon: Shield },
   { href: "/speed-calc", label: "속공 계산기", icon: Zap },
   { href: "/records", label: "랭킹", icon: Trophy },
-  { href: "/heroes", label: "영웅 도감", icon: BookOpen },
+  { href: "/heroes", label: "영웅 도감", icon: BookOpen, minRole: "연구원" },
 ];
+
+const ROLE_LEVEL: Record<UserRole, number> = {
+  길드원: 1, 연구원: 2, 관리자: 3, 슈퍼개발자: 4,
+};
 
 const ROLE_BADGE: Record<UserRole, { label: string; className: string } | null> = {
   슈퍼개발자: null, // 슈퍼개발자는 배지 숨김
@@ -45,21 +50,27 @@ export default function Navbar({ user }: NavbarProps) {
         </Link>
 
         <nav className="flex flex-1 items-center gap-1">
-          {navItems.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                pathname.startsWith(href)
-                  ? "bg-accent text-accent-foreground"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              <Icon size={15} />
-              {label}
-            </Link>
-          ))}
+          {navItems
+            .filter(({ minRole }) => {
+              if (!minRole) return true;
+              if (!user) return false;
+              return ROLE_LEVEL[user.role] >= ROLE_LEVEL[minRole];
+            })
+            .map(({ href, label, icon: Icon }) => (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+                  pathname.startsWith(href)
+                    ? "bg-accent text-accent-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                )}
+              >
+                <Icon size={15} />
+                {label}
+              </Link>
+            ))}
           {user && (user.role === "슈퍼개발자" || user.role === "관리자") && (
             <Link
               href="/admin"
