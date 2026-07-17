@@ -404,32 +404,65 @@ function SpeedCalcPage() {
   // 검색 드롭다운에서 제외할 이름: 같은 팀 내 이미 선택된 것만 제외
   // (다른 팀에 있어도 이 팀에 추가 가능)
 
-  const enemySpeeds: Record<string, number> = {};
-  for (const c of enemyChips) enemySpeeds[c.name] = SPEED_BASE[c.type ?? "만능형"];
-
-  const allyTotal = allyChips.reduce((s, c) => s + (Number(allySpeeds[c.name]) || 0), 0);
-  const enemyTotal = Object.values(enemySpeeds).reduce((s, v) => s + v, 0);
+  // 영웅별 속공 수치 계산
+  const enemySpeedMap: Record<string, number> = {};
+  for (const c of enemyChips) {
+    enemySpeedMap[c.name] = (c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25;
+  }
 
   // 배치된 슬롯 — name+team 조합으로 구분
   const placedSet = new Set(battleOrder.filter((s) => s.name).map((s) => `${s.team}:${s.name}`));
   const isAdmin = ["슈퍼개발자", "관리자"].includes(userRole);
 
   function handleAnalyze() {
-    const filled = battleOrder.filter((s) => s.name);
-    if (filled.length === 0) { setAnalysis("전투 순서를 입력해주세요."); return; }
-    const firstAllyIdx = battleOrder.findIndex((s) => s.name && s.team === "ally");
-    const firstEnemyIdx = battleOrder.findIndex((s) => s.name && s.team === "enemy");
-    let msg = "";
-    if (firstAllyIdx !== -1 && firstEnemyIdx !== -1) {
-      if (firstAllyIdx < firstEnemyIdx)
-        msg = speedResult === "승" ? `✅ 아군 선행 — 속공 따냄 (우리 합산 ${allyTotal})` : `⚠️ 순서상 아군 선행인데 속공 패 — 수치 재확인`;
-      else
-        msg = speedResult === "패" ? `📌 적군 선행 — 속공 잃음 (상대 추정 ${enemyTotal})` : `⚠️ 순서상 적군 선행인데 속공 승 — 수치 재확인`;
-    } else if (firstAllyIdx !== -1) {
-      msg = `🔵 아군만 배치됨 — 합산 속공 ${allyTotal}`;
-    } else {
-      msg = `🔴 적군만 배치됨 — 추정 속공 ${enemyTotal}`;
+    if (enemyChips.length === 0 && allyChips.length === 0) {
+      setAnalysis("영웅을 선택해주세요."); return;
     }
+
+    // 전체 영웅 속공 수치 수집
+    const allEntries: { name: string; team: TeamType; speed: number }[] = [
+      ...enemyChips.map((c) => ({
+        name: c.name, team: "enemy" as TeamType,
+        speed: (c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25,
+      })),
+      ...allyChips.map((c) => ({
+        name: c.name, team: "ally" as TeamType,
+        speed: Number(allySpeeds[c.name]) || 0,
+      })),
+    ];
+
+    // 속공 수치 기준 내림차순 정렬 → 전투 순서 자동 계산
+    const sorted = [...allEntries].sort((a, b) => b.speed - a.speed);
+    const newOrder: OrderSlot[] = Array(6).fill(null).map((_, i) =>
+      sorted[i] ? { name: sorted[i].name, team: sorted[i].team } : { ...EMPTY_SLOT }
+    );
+    setBattleOrder(newOrder);
+
+    // 각 팀 최고 속공
+    const maxAlly = Math.max(0, ...allyChips.map((c) => Number(allySpeeds[c.name]) || 0));
+    const maxEnemy = Math.max(0, ...enemyChips.map((c) => (c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25));
+    const firstHero = sorted[0];
+
+    let msg = "";
+    if (!firstHero) { setAnalysis("영웅을 선택해주세요."); return; }
+
+    if (firstHero.team === "ally") {
+      msg = `✅ 아군 속공 선행! 아군 최고 ${maxAlly} > 적군 최고 ${maxEnemy}`;
+    } else {
+      msg = `📌 적군 속공 선행. 적군 최고 ${maxEnemy} > 아군 최고 ${maxAlly}`;
+    }
+
+    // 아군이 연속으로 몇 번 먼저 공격하는지
+    const firstEnemyInSorted = sorted.findIndex((h) => h.team === "enemy");
+    const firstAllyInSorted = sorted.findIndex((h) => h.team === "ally");
+    if (firstAllyInSorted !== -1 && (firstEnemyInSorted === -1 || firstAllyInSorted < firstEnemyInSorted)) {
+      const allyBeforeEnemy = firstEnemyInSorted === -1 ? sorted.filter(h => h.team === "ally").length : firstEnemyInSorted;
+      msg += ` (아군 ${allyBeforeEnemy}번 선공)`;
+    } else if (firstEnemyInSorted !== -1 && (firstAllyInSorted === -1 || firstEnemyInSorted < firstAllyInSorted)) {
+      const enemyBeforeAlly = firstAllyInSorted === -1 ? sorted.filter(h => h.team === "enemy").length : firstAllyInSorted;
+      msg += ` (적군 ${enemyBeforeAlly}번 선공)`;
+    }
+
     setAnalysis(msg);
   }
 
@@ -451,9 +484,9 @@ function SpeedCalcPage() {
         defense_team_id: paramTeamId || null,
         battle_order: battleOrder.filter((s) => s.name).map((s) => `${s.team}:${s.name}`),
         ally_speeds: allySpeedsNum,
-        enemy_speeds: enemySpeeds,
-        ally_total: allyTotal,
-        enemy_total: enemyTotal,
+        enemy_speeds: enemySpeedMap,
+        ally_total: allyChips.reduce((s, c) => s + (Number(allySpeeds[c.name]) || 0), 0),
+        enemy_total: enemyChips.reduce((s, c) => s + ((c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25), 0),
         recorder_name: playerName.trim(),
       }),
     });
