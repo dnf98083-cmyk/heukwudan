@@ -245,6 +245,38 @@ function SpeedRecordCard({ record: r, isAdmin, onDelete }: {
   );
 }
 
+// ── 칩 아이템 (모듈 스코프 — 리렌더 시 언마운트 방지) ──────────────────────
+
+function ChipItem({ chip, team, colorBase, placed, onFill, onRemove }: {
+  chip: Chip;
+  team: TeamType;
+  colorBase: string;
+  placed: boolean;
+  onFill: () => void;
+  onRemove: () => void;
+}) {
+  const ts = chip.type ? TYPE_STYLE[chip.type] : null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold border cursor-pointer select-none transition-opacity",
+        ts ? ts.className : colorBase,
+        placed ? "opacity-100" : "opacity-60"
+      )}
+      onClick={onFill}
+    >
+      <span className="text-[10px] mr-0.5">{placed ? "✓" : "●"}</span>
+      {chip.name}
+      <button
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        className="ml-0.5 hover:opacity-60 transition-opacity"
+      >
+        <X size={9} />
+      </button>
+    </span>
+  );
+}
+
 // ── 페이지 래퍼 ───────────────────────────────────────────────────────────
 
 export default function SpeedCalcPageWrapper() {
@@ -443,31 +475,6 @@ function SpeedCalcPage() {
     await fetchRecords();
   }
 
-  // ── 칩 렌더 ──────────────────────────────────────────────────────────────
-  function ChipItem({ chip, team, colorBase }: { chip: Chip; team: TeamType; colorBase: string }) {
-    const ts = chip.type ? TYPE_STYLE[chip.type] : null;
-    const placed = placedSet.has(`${team}:${chip.name}`);
-    return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold border cursor-pointer select-none transition-opacity",
-          ts ? ts.className : colorBase,
-          placed ? "opacity-100" : "opacity-60"
-        )}
-        onClick={() => fillNextSlot(chip.name, team)}
-      >
-        <span className="text-[10px] mr-0.5">{placed ? "✓" : "●"}</span>
-        {chip.name}
-        <button
-          onClick={(e) => { e.stopPropagation(); removeChip(chip.name, team); }}
-          className="ml-0.5 hover:opacity-60 transition-opacity"
-        >
-          <X size={9} />
-        </button>
-      </span>
-    );
-  }
-
   return (
     <div className="space-y-4 max-w-sm mx-auto">
       <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-lg">
@@ -523,7 +530,15 @@ function SpeedCalcPage() {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {enemyChips.map((c) => (
-              <ChipItem key={c.name} chip={c} team="enemy" colorBase="bg-red-900/40 text-red-300 border-red-700/40" />
+              <ChipItem
+                key={c.name}
+                chip={c}
+                team="enemy"
+                colorBase="bg-red-900/40 text-red-300 border-red-700/40"
+                placed={placedSet.has(`enemy:${c.name}`)}
+                onFill={() => fillNextSlot(c.name, "enemy")}
+                onRemove={() => removeChip(c.name, "enemy")}
+              />
             ))}
           </div>
           {enemyChips.length < 3 && (
@@ -542,7 +557,15 @@ function SpeedCalcPage() {
           </p>
           <div className="flex flex-wrap gap-1.5">
             {allyChips.map((c) => (
-              <ChipItem key={c.name} chip={c} team="ally" colorBase="bg-blue-900/40 text-blue-300 border-blue-700/40" />
+              <ChipItem
+                key={c.name}
+                chip={c}
+                team="ally"
+                colorBase="bg-blue-900/40 text-blue-300 border-blue-700/40"
+                placed={placedSet.has(`ally:${c.name}`)}
+                onFill={() => fillNextSlot(c.name, "ally")}
+                onRemove={() => removeChip(c.name, "ally")}
+              />
             ))}
           </div>
           {allyChips.length < 3 && (
@@ -564,7 +587,15 @@ function SpeedCalcPage() {
             <div className="mt-2 space-y-1.5">
               <div className="flex flex-wrap gap-1.5">
                 {otherChips.map((c) => (
-                  <ChipItem key={c.name} chip={c} team="other" colorBase="bg-muted text-muted-foreground border-border/40" />
+                  <ChipItem
+                    key={c.name}
+                    chip={c}
+                    team="other"
+                    colorBase="bg-muted text-muted-foreground border-border/40"
+                    placed={placedSet.has(`other:${c.name}`)}
+                    onFill={() => fillNextSlot(c.name, "other")}
+                    onRemove={() => removeChip(c.name, "other")}
+                  />
                 ))}
               </div>
               <HeroSearch group="other" allHeroes={allHeroes} used={otherUsed} onAdd={addHero}
