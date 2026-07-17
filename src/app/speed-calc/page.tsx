@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Zap, RotateCcw, Plus, X, ChevronDown, ChevronUp } from "lucide-react";
+import { Zap, RotateCcw, X, ChevronUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { TYPE_STYLE } from "@/lib/constants";
@@ -17,6 +17,79 @@ interface Chip { name: string; type: HeroType | null }
 
 const EMPTY_ORDER = Array<string>(6).fill("");
 
+// ── 컴포넌트 밖에 정의 (내부 정의 시 렌더링마다 unmount → 한글 IME 깨짐) ──
+
+function ChipButton({ chip, onRemove }: { chip: Chip; onRemove: (name: string) => void }) {
+  const ts = chip.type ? TYPE_STYLE[chip.type] : null;
+  return (
+    <button
+      onClick={() => onRemove(chip.name)}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-70",
+        ts ? ts.className : "bg-muted text-muted-foreground"
+      )}
+    >
+      {chip.name}
+      <X size={9} />
+    </button>
+  );
+}
+
+function SearchDropdown({
+  query,
+  setQuery,
+  group,
+  allHeroes,
+  activeSearch,
+  setActiveSearch,
+  onAdd,
+  containerRef,
+}: {
+  query: string;
+  setQuery: (q: string) => void;
+  group: "enemy" | "ally" | "other";
+  allHeroes: Hero[];
+  activeSearch: string | null;
+  setActiveSearch: (g: "enemy" | "ally" | "other" | null) => void;
+  onAdd: (hero: Hero, group: "enemy" | "ally" | "other") => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const results = query.trim() ? searchHeroes(allHeroes, query).slice(0, 8) : [];
+  const isActive = activeSearch === group;
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setActiveSearch(group); }}
+        onFocus={() => setActiveSearch(group)}
+        placeholder="영웅 이름 검색"
+        className="text-sm h-8"
+      />
+      {isActive && results.length > 0 && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
+          {results.map(hero => {
+            const ts = hero.type ? TYPE_STYLE[hero.type as HeroType] : null;
+            return (
+              <button
+                key={hero.name}
+                onMouseDown={(e) => { e.preventDefault(); onAdd(hero, group); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+              >
+                {ts && <span className={cn("w-2 h-2 rounded-full shrink-0", ts.dot)} />}
+                <span>{hero.name}</span>
+                {hero.type && <span className="ml-auto text-xs text-muted-foreground">{hero.type}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 메인 페이지 ──────────────────────────────────────
+
 export default function SpeedCalcPage() {
   const [allHeroes, setAllHeroes] = useState<Hero[]>([]);
   const [speedResult, setSpeedResult] = useState<"승" | "패">("승");
@@ -26,8 +99,6 @@ export default function SpeedCalcPage() {
   const [showOtherSearch, setShowOtherSearch] = useState(false);
   const [battleOrder, setBattleOrder] = useState<string[]>([...EMPTY_ORDER]);
   const [analysis, setAnalysis] = useState<string | null>(null);
-
-  // 검색 상태 (enemy/ally/other 섹션별)
   const [enemyQ, setEnemyQ] = useState("");
   const [allyQ, setAllyQ] = useState("");
   const [otherQ, setOtherQ] = useState("");
@@ -43,7 +114,6 @@ export default function SpeedCalcPage() {
     });
   }, []);
 
-  // 외부 클릭 시 검색 드롭다운 닫기
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       const refs = [enemyRef, allyRef, otherRef];
@@ -76,28 +146,16 @@ export default function SpeedCalcPage() {
     setAnalysis(null);
   }
 
-  function resetAll() {
-    setBattleOrder([...EMPTY_ORDER]);
-    setAnalysis(null);
-  }
-
   function handleAnalyze() {
     const filled = battleOrder.filter(Boolean);
     if (filled.length === 0) { setAnalysis("전투 순서를 입력해주세요."); return; }
 
     const enemyNames = new Set(enemyChips.map(c => c.name));
     const allyNames = new Set(allyChips.map(c => c.name));
-
-    // 아군/적군 속공 합산 추정
-    const allyInOrder = battleOrder.filter(n => n && allyNames.has(n));
-    const enemyInOrder = battleOrder.filter(n => n && enemyNames.has(n));
-
-    // 합산 속공 (아군은 기본 25, 적군도 기본값으로 추정)
     const allyTotal = allChips
       .filter(c => allyNames.has(c.name))
       .reduce((s, c) => s + SPEED_BASE[c.type ?? "만능형"], 0);
 
-    // 첫 타자 비교
     const firstAllyIdx = battleOrder.findIndex(n => n && allyNames.has(n));
     const firstEnemyIdx = battleOrder.findIndex(n => n && enemyNames.has(n));
 
@@ -112,73 +170,14 @@ export default function SpeedCalcPage() {
           ? `📌 적군이 먼저 행동 — 속공 잃음`
           : `⚠️ 순서상 적군이 먼저인데 속공 승 — 수치 재확인 필요`;
       }
-    } else if (allyInOrder.length > 0) {
+    } else if (firstAllyIdx !== -1) {
       msg = `🔵 아군만 입력됨 — 기본 합산 속공: ${allyTotal}`;
-    } else if (enemyInOrder.length > 0) {
+    } else if (firstEnemyIdx !== -1) {
       msg = `🔴 적군만 입력됨`;
     } else {
       msg = "아군/적군 캐릭터를 전투 순서에 추가해주세요.";
     }
-
     setAnalysis(msg);
-  }
-
-  function SearchDropdown({
-    query, setQuery, group, containerRef,
-  }: {
-    query: string; setQuery: (q: string) => void;
-    group: "enemy" | "ally" | "other"; containerRef: React.RefObject<HTMLDivElement | null>;
-  }) {
-    const results = query.trim() ? searchHeroes(allHeroes, query).slice(0, 8) : [];
-    const isActive = activeSearch === group;
-
-    return (
-      <div ref={containerRef} className="relative">
-        <div className="flex gap-1.5">
-          <Input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setActiveSearch(group); }}
-            onFocus={() => setActiveSearch(group)}
-            placeholder="영웅 이름 검색"
-            className="text-sm h-8"
-          />
-        </div>
-        {isActive && results.length > 0 && (
-          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
-            {results.map(hero => {
-              const ts = hero.type ? TYPE_STYLE[hero.type as HeroType] : null;
-              return (
-                <button
-                  key={hero.name}
-                  onMouseDown={(e) => { e.preventDefault(); addChip(hero, group); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
-                >
-                  {ts && <span className={cn("w-2 h-2 rounded-full shrink-0", ts.dot)} />}
-                  <span>{hero.name}</span>
-                  {hero.type && <span className="ml-auto text-xs text-muted-foreground">{hero.type}</span>}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  function ChipButton({ chip }: { chip: Chip }) {
-    const ts = chip.type ? TYPE_STYLE[chip.type] : null;
-    return (
-      <button
-        onClick={() => removeChip(chip.name)}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold transition-opacity hover:opacity-70",
-          ts ? ts.className : "bg-muted text-muted-foreground"
-        )}
-      >
-        {chip.name}
-        <X size={9} />
-      </button>
-    );
   }
 
   return (
@@ -213,7 +212,7 @@ export default function SpeedCalcPage() {
       </div>
 
       {/* 상대 방어팀 */}
-      <div className="px-4 py-3 border-b border-border/20 space-y-2" ref={enemyRef}>
+      <div className="px-4 py-3 border-b border-border/20 space-y-2">
         <p className="text-xs font-semibold text-muted-foreground">
           🔴 상대 방어팀
           {enemyChips.length > 0 && (
@@ -223,16 +222,17 @@ export default function SpeedCalcPage() {
           )}
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {enemyChips.map(c => <ChipButton key={c.name} chip={c} />)}
+          {enemyChips.map(c => <ChipButton key={c.name} chip={c} onRemove={removeChip} />)}
         </div>
         <SearchDropdown
-          query={enemyQ} setQuery={setEnemyQ}
-          group="enemy" containerRef={enemyRef}
+          query={enemyQ} setQuery={setEnemyQ} group="enemy"
+          allHeroes={allHeroes} activeSearch={activeSearch} setActiveSearch={setActiveSearch}
+          onAdd={addChip} containerRef={enemyRef}
         />
       </div>
 
       {/* 우리팀 공격덱 */}
-      <div className="px-4 py-3 border-b border-border/20 space-y-2" ref={allyRef}>
+      <div className="px-4 py-3 border-b border-border/20 space-y-2">
         <p className="text-xs font-semibold text-muted-foreground">
           🔵 우리팀 공격덱
           {allyChips.length > 0 && (
@@ -242,16 +242,17 @@ export default function SpeedCalcPage() {
           )}
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {allyChips.map(c => <ChipButton key={c.name} chip={c} />)}
+          {allyChips.map(c => <ChipButton key={c.name} chip={c} onRemove={removeChip} />)}
         </div>
         <SearchDropdown
-          query={allyQ} setQuery={setAllyQ}
-          group="ally" containerRef={allyRef}
+          query={allyQ} setQuery={setAllyQ} group="ally"
+          allHeroes={allHeroes} activeSearch={activeSearch} setActiveSearch={setActiveSearch}
+          onAdd={addChip} containerRef={allyRef}
         />
       </div>
 
       {/* 기타 캐릭터 검색 */}
-      <div className="px-4 py-3 border-b border-border/20 space-y-2" ref={otherRef}>
+      <div className="px-4 py-3 border-b border-border/20 space-y-2">
         <button
           onClick={() => setShowOtherSearch(p => !p)}
           className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground"
@@ -262,11 +263,12 @@ export default function SpeedCalcPage() {
         {showOtherSearch && (
           <div className="space-y-2">
             <div className="flex flex-wrap gap-1.5">
-              {otherChips.map(c => <ChipButton key={c.name} chip={c} />)}
+              {otherChips.map(c => <ChipButton key={c.name} chip={c} onRemove={removeChip} />)}
             </div>
             <SearchDropdown
-              query={otherQ} setQuery={setOtherQ}
-              group="other" containerRef={otherRef}
+              query={otherQ} setQuery={setOtherQ} group="other"
+              allHeroes={allHeroes} activeSearch={activeSearch} setActiveSearch={setActiveSearch}
+              onAdd={addChip} containerRef={otherRef}
             />
           </div>
         )}
@@ -277,7 +279,7 @@ export default function SpeedCalcPage() {
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-muted-foreground">🗡️ 전투 순서 (위에서 아래로)</p>
           <button
-            onClick={resetAll}
+            onClick={() => { setBattleOrder([...EMPTY_ORDER]); setAnalysis(null); }}
             className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors"
           >
             <RotateCcw size={10} className="mr-0.5" />전체 초기화
