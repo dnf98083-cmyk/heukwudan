@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
 
   // 슈퍼개발자 체크 (DB 조회 없이 env로만 처리)
   if (
-    username === process.env.SUPER_DEV_ID &&
-    password === process.env.SUPER_DEV_PASSWORD
+    username === process.env.SUPER_DEV_ID?.trim() &&
+    password === process.env.SUPER_DEV_PASSWORD?.trim()
   ) {
     const session = await getIronSession<SessionData>(await cookies(), sessionOptions);
     session.userId = "super";
