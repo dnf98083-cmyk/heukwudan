@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Shield, Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -95,12 +95,121 @@ export default function DefensePage() {
 }
 
 // ────────────────────────────────────────────────
+// 공격 현황 (덱별 승률)
+// ────────────────────────────────────────────────
+interface DeckStat {
+  id: string;
+  name: string;
+  formation_slots: Array<{ pos: number; name: string }> | null;
+  wins: number;
+  losses: number;
+  equipment: string | null;
+  skill_order: string | null;
+  speed_type: string | null;
+}
+
+function AttackStats({ teamId }: { teamId: string }) {
+  const [decks, setDecks] = useState<DeckStat[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    createClient()
+      .from("attack_decks")
+      .select("id, name, formation_slots, wins, losses, equipment, skill_order, speed_type")
+      .eq("defense_team_id", teamId)
+      .order("wins", { ascending: false })
+      .then(({ data }) => { setDecks((data ?? []) as DeckStat[]); setLoading(false); });
+  }, [teamId]);
+
+  if (loading) return <p className="text-xs text-muted-foreground text-center py-3">불러오는 중...</p>;
+  if (!decks || decks.length === 0)
+    return <p className="text-xs text-muted-foreground text-center py-3">이 방어팀에 등록된 공격 덱이 없습니다.</p>;
+
+  return (
+    <div className="space-y-2">
+      {decks.map((deck) => {
+        const total = deck.wins + deck.losses;
+        const rate = total === 0 ? null : Math.round((deck.wins / total) * 100);
+        const heroes = (deck.formation_slots ?? [])
+          .sort((a, b) => a.pos - b.pos)
+          .map((s) => s.name)
+          .filter(Boolean);
+
+        return (
+          <div key={deck.id} className="rounded-lg border border-border/40 bg-muted/10 p-3 space-y-2">
+            {/* 덱 이름 + 승률 */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate">{deck.name}</p>
+                {deck.speed_type && (
+                  <span className={cn(
+                    "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                    deck.speed_type === "속공 따야 함"
+                      ? "bg-yellow-500/20 text-yellow-400"
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    {deck.speed_type}
+                  </span>
+                )}
+              </div>
+              <div className="text-right shrink-0">
+                {rate !== null ? (
+                  <p className={cn(
+                    "text-base font-black",
+                    rate >= 70 ? "text-green-400" : rate >= 50 ? "text-yellow-400" : "text-red-400"
+                  )}>
+                    {rate}%
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">기록 없음</p>
+                )}
+                {total > 0 && (
+                  <p className="text-[10px] text-muted-foreground">{deck.wins}승 {deck.losses}패</p>
+                )}
+              </div>
+            </div>
+
+            {/* 영웅 구성 */}
+            {heroes.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {heroes.map((h) => (
+                  <span key={h} className="text-[10px] px-1.5 py-0.5 rounded border border-border/50 bg-background text-muted-foreground">
+                    {h}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* 장비·스킬 코멘트 */}
+            {(deck.equipment || deck.skill_order) && (
+              <div className="space-y-0.5 border-t border-border/30 pt-2">
+                {deck.skill_order && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="text-foreground/60 font-medium">스킬순서</span> {deck.skill_order}
+                  </p>
+                )}
+                {deck.equipment && (
+                  <p className="text-[11px] text-muted-foreground">
+                    <span className="text-foreground/60 font-medium">장비</span> {deck.equipment}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────
 // 팀 카드
 // ────────────────────────────────────────────────
 function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => void }) {
   const [addStratOpen, setAddStratOpen] = useState(false);
   const [editTeamOpen, setEditTeamOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [expandStats, setExpandStats] = useState(false);
 
   const strategies: DefenseStrategy[] = (team.strategies ?? []).sort(
     (a, b) => a.strategy_num - b.strategy_num
@@ -181,6 +290,20 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
             </Button>
           </>
         )}
+
+        {/* 공격 현황 토글 */}
+        <button
+          onClick={() => setExpandStats((v) => !v)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-border/50 text-sm text-muted-foreground hover:text-foreground hover:bg-accent/20 transition-colors"
+        >
+          <span className="flex items-center gap-1.5">
+            <BarChart2 size={13} />
+            공격 현황
+          </span>
+          {expandStats ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+        </button>
+
+        {expandStats && <AttackStats teamId={team.id} />}
       </CardContent>
 
       <AddStrategyDialog
