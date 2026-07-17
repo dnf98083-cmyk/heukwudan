@@ -48,3 +48,30 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
+
+// 특정 상대덱 그룹 전체 삭제
+export async function DELETE(request: NextRequest) {
+  const session = await getSession();
+  if (!session.isLoggedIn) return NextResponse.json({ error: "로그인 필요" }, { status: 401 });
+
+  const body = await request.json();
+  const { team_id, opponent_heroes } = body;
+  if (!team_id) return NextResponse.json({ error: "team_id 필요" }, { status: 400 });
+
+  const admin = createAdminClient();
+  const { data: all } = await admin
+    .from("defense_records")
+    .select("id, opponent_heroes")
+    .eq("team_id", team_id);
+
+  const sortedTarget = [...(opponent_heroes ?? [])].sort().join(",");
+  const ids = (all ?? [])
+    .filter((r) => [...(r.opponent_heroes ?? [])].sort().join(",") === sortedTarget)
+    .map((r) => r.id);
+
+  if (ids.length === 0) return NextResponse.json({ deleted: 0 });
+
+  const { error } = await admin.from("defense_records").delete().in("id", ids);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ deleted: ids.length });
+}
