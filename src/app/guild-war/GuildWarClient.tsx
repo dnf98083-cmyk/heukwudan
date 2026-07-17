@@ -1,15 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Swords, RefreshCw, Trash2, ExternalLink, Castle } from "lucide-react";
+import { Swords, RefreshCw, Trash2, ExternalLink, ChevronDown, ChevronUp, Castle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
-const CASTLE_TYPES = [
-  "외성 1", "외성 2", "외성 3", "외성 4", "외성 5",
-  "내성 1", "내성 2", "내성 3", "본성",
+const CASTLE_GROUPS = [
+  { label: "외성", icon: "🏰", castles: ["외성 1", "외성 2", "외성 3", "외성 4", "외성 5"] },
+  { label: "내성", icon: "🏛", castles: ["내성 1", "내성 2", "내성 3"] },
+  { label: "본성", icon: "👑", castles: ["본성"] },
 ];
+
+const ALL_CASTLES = CASTLE_GROUPS.flatMap((g) => g.castles);
 
 interface SpeedRecord {
   id: string;
@@ -29,124 +32,158 @@ interface SpeedRecord {
   recorded_at: string;
 }
 
+// ── 기록 카드 (컴팩트) ──────────────────────────────────────────
 function RecordCard({ r, isAdmin, onDelete }: {
   r: SpeedRecord; isAdmin: boolean; onDelete: () => void;
 }) {
   const time = new Date(r.recorded_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 
-  // 배틀 순서에서 적군/아군 순서 재구성
   const orderDisplay = r.battle_order.slice(0, 6).map((entry, i) => {
     const [team, ...rest] = entry.split(":");
-    const name = rest.join(":");
-    return { idx: i + 1, team, name };
+    return { idx: i + 1, team, name: rest.join(":") };
   });
 
+  const enemyRangeTotal = r.enemy_speed_ranges?.length
+    ? {
+        min: r.enemy_speed_ranges.reduce((s, x) => s + x.min, 0),
+        max: r.enemy_speed_ranges.reduce((s, x) => s + x.max, 0),
+      }
+    : null;
+
   return (
-    <div className="rounded-xl border border-border/50 bg-card overflow-hidden text-sm">
+    <div className="rounded-lg border border-border/40 bg-card/50 overflow-hidden">
       {/* 헤더 */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/10 border-b border-border/30">
-        {r.result && (
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/20 bg-muted/5">
+        {r.result ? (
           <Badge
             variant="outline"
-            className={r.result === "승" ? "border-blue-500 text-blue-400 shrink-0 text-[10px]" : "border-red-500 text-red-400 shrink-0 text-[10px]"}
+            className={cn(
+              "shrink-0 text-[10px] px-1.5 py-0",
+              r.result === "승" ? "border-blue-500 text-blue-400" : "border-red-500 text-red-400"
+            )}
           >
             {r.result}
           </Badge>
-        )}
-        <span className="font-semibold text-xs">
+        ) : null}
+        <span className="text-xs font-medium flex-1 truncate">
           {r.opponent_name ? `vs ${r.opponent_name}` : "상대 미입력"}
         </span>
-        <span className="ml-auto text-[10px] text-muted-foreground">{time}</span>
+        <span className="text-[10px] text-muted-foreground shrink-0">{time}</span>
         {isAdmin && (
-          <button onClick={onDelete} className="text-muted-foreground hover:text-red-400 transition-colors ml-1">
-            <Trash2 size={12} />
+          <button onClick={onDelete} className="text-muted-foreground hover:text-red-400 transition-colors">
+            <Trash2 size={11} />
           </button>
         )}
       </div>
 
-      <div className="px-3 py-2.5 space-y-2">
-        {/* 방어팀 & 공격덱 */}
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <p className="text-[10px] text-muted-foreground mb-1">🔴 방어팀</p>
-            <div className="flex flex-wrap gap-1">
-              {r.enemy_heroes.map((name) => (
-                <span key={name} className="text-[10px] border border-red-500/30 text-red-300 rounded px-1.5 py-0.5 bg-red-900/10">
-                  {name}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div>
-            <p className="text-[10px] text-muted-foreground mb-1">🔵 공격덱</p>
-            <div className="flex flex-wrap gap-1">
-              {r.ally_heroes.map((name) => (
-                <span key={name} className="text-[10px] border border-blue-500/30 text-blue-300 rounded px-1.5 py-0.5 bg-blue-900/10">
-                  {name}
-                </span>
-              ))}
-            </div>
-            {r.defense_team_id && (
-              <a
-                href={`/attack?team=${r.defense_team_id}`}
-                className="mt-1 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-              >
-                <ExternalLink size={9} />공략 보기
-              </a>
-            )}
-          </div>
-        </div>
-
-        {/* 전투 순서 */}
+      <div className="px-3 py-2 space-y-1.5">
+        {/* 속공 순서 */}
         {orderDisplay.length > 0 && (
-          <div>
-            <p className="text-[10px] text-muted-foreground mb-1">⚡ 속공 순서</p>
-            <div className="flex flex-wrap gap-1">
-              {orderDisplay.map((o) => (
-                <span
-                  key={o.idx}
-                  className={cn(
-                    "inline-flex items-center gap-0.5 text-[10px] rounded px-1.5 py-0.5",
-                    o.team === "enemy"
-                      ? "bg-red-900/20 text-red-300 border border-red-500/30"
-                      : "bg-blue-900/20 text-blue-300 border border-blue-500/30"
-                  )}
-                >
-                  <span className="opacity-60">{o.idx}.</span>{o.name}
-                </span>
-              ))}
-            </div>
+          <div className="flex flex-wrap gap-1">
+            {orderDisplay.map((o) => (
+              <span
+                key={o.idx}
+                className={cn(
+                  "inline-flex items-center gap-0.5 text-[10px] rounded px-1.5 py-0.5",
+                  o.team === "enemy"
+                    ? "bg-red-900/20 text-red-300 border border-red-500/30"
+                    : "bg-blue-900/20 text-blue-300 border border-blue-500/30"
+                )}
+              >
+                <span className="opacity-50">{o.idx}.</span>{o.name}
+              </span>
+            ))}
           </div>
         )}
 
         {/* 속공 수치 */}
         <div className="flex items-center gap-3 text-[11px]">
-          <span className="text-blue-300">
-            아군 합산 <strong>{r.ally_total}</strong>
-          </span>
-          {r.enemy_speed_ranges && r.enemy_speed_ranges.length > 0 ? (
+          <span className="text-blue-300">아군 합산 <strong>{r.ally_total}</strong></span>
+          {enemyRangeTotal && (
             <span className="text-red-300">
-              적군 추정{" "}
-              <strong>
-                {r.enemy_speed_ranges.reduce((s, x) => s + x.min, 0)}
-                ~
-                {r.enemy_speed_ranges.reduce((s, x) => s + x.max, 0)}
-              </strong>
-            </span>
-          ) : (
-            <span className="text-red-300">
-              적군 추정 <strong>{r.enemy_total}</strong>
+              적군 추정 <strong>{enemyRangeTotal.min}~{enemyRangeTotal.max}</strong>
             </span>
           )}
         </div>
 
-        {/* 기록자 */}
-        <p className="text-[10px] text-muted-foreground">기록: {r.recorder_name}</p>
+        {/* 기록자 + 공략 보러가기 */}
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] text-muted-foreground">기록: {r.recorder_name}</p>
+          {r.defense_team_id && (
+            <a
+              href={`/attack?team=${r.defense_team_id}`}
+              className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ExternalLink size={9} />공략 보러가기
+            </a>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+// ── 성 하나짜리 행 ──────────────────────────────────────────────
+function CastleRow({ castle, records, isAdmin, onDelete }: {
+  castle: string;
+  records: SpeedRecord[];
+  isAdmin: boolean;
+  onDelete: (id: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const wins = records.filter((r) => r.result === "승").length;
+  const losses = records.filter((r) => r.result === "패").length;
+  const hasRecords = records.length > 0;
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className={cn(
+          "w-full flex items-center justify-between px-3 py-2 rounded-lg border text-sm transition-colors",
+          hasRecords
+            ? "border-border/60 hover:bg-accent/20"
+            : "border-border/30 text-muted-foreground hover:bg-accent/10"
+        )}
+      >
+        <span className={cn("font-semibold text-xs", hasRecords ? "text-foreground" : "text-muted-foreground")}>
+          {castle}
+        </span>
+        <div className="flex items-center gap-2">
+          {hasRecords ? (
+            <span className="text-[11px]">
+              <span className="text-blue-400">{wins}승</span>
+              {" · "}
+              <span className="text-red-400">{losses}패</span>
+            </span>
+          ) : (
+            <span className="text-[10px] text-muted-foreground/60">기록 없음</span>
+          )}
+          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="mt-1.5 pl-3 space-y-1.5">
+          {records.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">기록이 없습니다.</p>
+          ) : (
+            records.map((r) => (
+              <RecordCard
+                key={r.id}
+                r={r}
+                isAdmin={isAdmin}
+                onDelete={() => onDelete(r.id)}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── 메인 ──────────────────────────────────────────────────────
 export default function GuildWarClient({ isAdmin }: { isAdmin: boolean }) {
   const [records, setRecords] = useState<SpeedRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,11 +212,10 @@ export default function GuildWarClient({ isAdmin }: { isAdmin: boolean }) {
     await fetchRecords();
   }
 
-  // 성별로 그룹핑
   const bycastle: Record<string, SpeedRecord[]> = {};
+  for (const castle of ALL_CASTLES) bycastle[castle] = [];
   for (const r of records) {
-    if (!bycastle[r.castle_type]) bycastle[r.castle_type] = [];
-    bycastle[r.castle_type].push(r);
+    if (bycastle[r.castle_type]) bycastle[r.castle_type].push(r);
   }
 
   const totalWins = records.filter((r) => r.result === "승").length;
@@ -197,7 +233,7 @@ export default function GuildWarClient({ isAdmin }: { isAdmin: boolean }) {
             <p className="text-xs text-muted-foreground mt-0.5">
               총 {records.length}회 &nbsp;·&nbsp;
               <span className="text-blue-400">{totalWins}승</span>
-              &nbsp;
+              {" "}
               <span className="text-red-400">{totalLosses}패</span>
             </p>
           )}
@@ -222,53 +258,47 @@ export default function GuildWarClient({ isAdmin }: { isAdmin: boolean }) {
 
       {loading ? (
         <p className="text-center text-sm text-muted-foreground py-16">불러오는 중...</p>
-      ) : records.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 gap-3 text-muted-foreground">
-          <Castle size={36} className="opacity-20" />
-          <p className="text-sm">오늘 기록된 길드전이 없습니다.</p>
-          <p className="text-xs opacity-60">공격 후 속공 계산기에서 저장해보세요.</p>
-        </div>
       ) : (
-        <div className="space-y-6">
-          {/* 기록 있는 성 순서대로 */}
-          {CASTLE_TYPES.filter((c) => bycastle[c]?.length).map((castle) => (
-            <div key={castle}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-bold text-amber-400 bg-amber-900/20 border border-amber-500/30 rounded px-2 py-0.5">
-                  🏰 {castle}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {bycastle[castle].length}회
-                  {" · "}
-                  <span className="text-blue-400">{bycastle[castle].filter((r) => r.result === "승").length}승</span>
-                  {" "}
-                  <span className="text-red-400">{bycastle[castle].filter((r) => r.result === "패").length}패</span>
-                </span>
-              </div>
-              <div className="space-y-2">
-                {bycastle[castle].map((r) => (
-                  <RecordCard
-                    key={r.id}
-                    r={r}
+        <div className="space-y-5">
+          {CASTLE_GROUPS.map((group) => (
+            <div key={group.label}>
+              {/* 그룹 헤더 */}
+              <p className="text-xs font-bold text-muted-foreground mb-2 flex items-center gap-1">
+                <span>{group.icon}</span>{group.label}
+              </p>
+              <div className="space-y-1.5">
+                {group.castles.map((castle) => (
+                  <CastleRow
+                    key={castle}
+                    castle={castle}
+                    records={bycastle[castle] ?? []}
                     isAdmin={isAdmin}
-                    onDelete={() => handleDelete(r.id)}
+                    onDelete={handleDelete}
                   />
                 ))}
               </div>
             </div>
           ))}
 
-          {/* 성이 지정되지 않은 기록 */}
-          {records.filter((r) => !CASTLE_TYPES.includes(r.castle_type)).length > 0 && (
+          {/* 분류 안 된 기록 */}
+          {records.filter((r) => !ALL_CASTLES.includes(r.castle_type)).length > 0 && (
             <div>
               <p className="text-xs font-bold text-muted-foreground mb-2">기타</p>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {records
-                  .filter((r) => !CASTLE_TYPES.includes(r.castle_type))
+                  .filter((r) => !ALL_CASTLES.includes(r.castle_type))
                   .map((r) => (
                     <RecordCard key={r.id} r={r} isAdmin={isAdmin} onDelete={() => handleDelete(r.id)} />
                   ))}
               </div>
+            </div>
+          )}
+
+          {records.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-muted-foreground">
+              <Castle size={36} className="opacity-20" />
+              <p className="text-sm">오늘 기록된 길드전이 없습니다.</p>
+              <p className="text-xs opacity-60">공격 후 속공 계산기에서 저장해보세요.</p>
             </div>
           )}
         </div>
