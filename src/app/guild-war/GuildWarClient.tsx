@@ -6,6 +6,43 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 
+// battle_order + ally_speeds + enemy_speeds 로 적군 속공 범위 재계산
+function inferEnemyRanges(
+  battleOrder: string[],
+  allySpeeds: Record<string, number>,
+  enemySpeeds: Record<string, number>
+): { name: string; min: number; max: number }[] {
+  const filled = battleOrder.map((entry) => {
+    const [team, ...rest] = entry.split(":");
+    return { team, name: rest.join(":") };
+  }).filter((s) => s.name);
+
+  const ranges: { name: string; min: number; max: number }[] = [];
+  for (let i = 0; i < filled.length; i++) {
+    const slot = filled[i];
+    if (slot.team !== "enemy") continue;
+    const base = enemySpeeds[slot.name] ?? 25;
+    const absoluteMax = base + 96;
+
+    let upperBound = absoluteMax;
+    for (let j = i - 1; j >= 0; j--) {
+      if (filled[j].team === "ally") {
+        upperBound = Math.min(absoluteMax, allySpeeds[filled[j].name] ?? 0);
+        break;
+      }
+    }
+    let lowerBound = 0;
+    for (let j = i + 1; j < filled.length; j++) {
+      if (filled[j].team === "ally") {
+        lowerBound = allySpeeds[filled[j].name] ?? 0;
+        break;
+      }
+    }
+    ranges.push({ name: slot.name, min: lowerBound, max: upperBound });
+  }
+  return ranges;
+}
+
 const CASTLE_GROUPS = [
   { label: "외성", icon: "🏰", castles: ["외성 1", "외성 2", "외성 3", "외성 4", "외성 5"] },
   { label: "내성", icon: "🏛", castles: ["내성 1", "내성 2", "내성 3"] },
@@ -24,6 +61,7 @@ interface SpeedRecord {
   defense_team_id: string | null;
   battle_order: string[];
   ally_speeds: Record<string, number>;
+  enemy_speeds: Record<string, number> | null;
   enemy_speed_ranges: { name: string; min: number; max: number }[] | null;
   ally_total: number;
   enemy_total: number;
@@ -43,11 +81,12 @@ function RecordCard({ r, isAdmin, onDelete }: {
     return { idx: i + 1, team, name: rest.join(":") };
   });
 
-  const enemyRangeTotal = r.enemy_speed_ranges?.length
-    ? {
-        min: r.enemy_speed_ranges.reduce((s, x) => s + x.min, 0),
-        max: r.enemy_speed_ranges.reduce((s, x) => s + x.max, 0),
-      }
+  const ranges = r.enemy_speed_ranges?.length
+    ? r.enemy_speed_ranges
+    : inferEnemyRanges(r.battle_order, r.ally_speeds, r.enemy_speeds ?? {});
+
+  const enemyRangeTotal = ranges.length
+    ? { min: ranges.reduce((s, x) => s + x.min, 0), max: ranges.reduce((s, x) => s + x.max, 0) }
     : null;
 
   return (
