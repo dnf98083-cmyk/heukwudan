@@ -19,6 +19,11 @@ interface Member {
 
 const ROLES: Member["role"][] = ["관리자", "연구원", "길드원"];
 
+function generateCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
 const ROLE_STYLE: Record<Member["role"], string> = {
   관리자: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   연구원: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -36,12 +41,12 @@ function AddDialog({
   onAdded: (m: Member) => void;
 }) {
   const [nickname, setNickname] = useState("");
-  const [entryCode, setEntryCode] = useState("");
+  const [entryCode, setEntryCode] = useState(() => generateCode());
   const [role, setRole] = useState<Member["role"]>("길드원");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  function reset() { setNickname(""); setEntryCode(""); setRole("길드원"); setError(""); }
+  function reset() { setNickname(""); setEntryCode(generateCode()); setRole("길드원"); setError(""); }
 
   async function handleSubmit() {
     setError("");
@@ -72,12 +77,23 @@ function AddDialog({
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">입장 코드 (6자리)</label>
-            <Input
-              value={entryCode}
-              onChange={(e) => setEntryCode(e.target.value.slice(0, 6))}
-              placeholder="예: A1B2C3"
-              maxLength={6}
-            />
+            <div className="flex gap-2">
+              <Input
+                value={entryCode}
+                onChange={(e) => setEntryCode(e.target.value.toUpperCase().slice(0, 6))}
+                placeholder="예: A1B2C3"
+                maxLength={6}
+                className="font-mono tracking-widest"
+              />
+              <button
+                type="button"
+                onClick={() => setEntryCode(generateCode())}
+                className="shrink-0 px-3 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-accent/30 transition-colors"
+                title="랜덤 재생성"
+              >
+                🔄
+              </button>
+            </div>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">역할</label>
