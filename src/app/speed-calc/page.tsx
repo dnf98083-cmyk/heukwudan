@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Zap, RotateCcw, X, Trash2, ExternalLink } from "lucide-react";
+import { Zap, RotateCcw, X, Trash2, ExternalLink, ChevronUp, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -35,51 +35,32 @@ interface SpeedRecord {
   recorded_at: string;
 }
 
-// ── 컴포넌트 밖에 정의 (내부 정의 시 렌더링마다 unmount → 한글 IME 깨짐) ──
-
-function ChipBadge({ chip, onRemove }: { chip: Chip; onRemove?: (name: string) => void }) {
-  const ts = chip.type ? TYPE_STYLE[chip.type] : null;
-  return (
-    <span className={cn(
-      "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold",
-      ts ? ts.className : "bg-muted text-muted-foreground"
-    )}>
-      {chip.name}
-      {chip.type && <span className="opacity-60 text-[10px]">({chip.type})</span>}
-      {onRemove && (
-        <button onClick={() => onRemove(chip.name)} className="hover:opacity-70"><X size={9} /></button>
-      )}
-    </span>
-  );
-}
+// ── 모듈 스코프 컴포넌트 (내부 정의 시 한글 IME 깨짐) ──────────────────
 
 function HeroSearch({
   group, allHeroes, used, onAdd, activeSearch, setActiveSearch, containerRef,
 }: {
-  group: "enemy" | "ally";
+  group: "enemy" | "ally" | "other";
   allHeroes: Hero[];
   used: string[];
-  onAdd: (hero: Hero, group: "enemy" | "ally") => void;
+  onAdd: (hero: Hero, group: "enemy" | "ally" | "other") => void;
   activeSearch: string | null;
   setActiveSearch: (g: string | null) => void;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }) {
   const [query, setQuery] = useState("");
-
   const available = allHeroes.filter((h) => !used.includes(h.name));
-  const results = query.trim()
-    ? available.filter((h) => h.name.includes(query)).slice(0, 8)
-    : [];
+  const results = query.trim() ? available.filter((h) => h.name.includes(query)).slice(0, 8) : [];
   const isActive = activeSearch === group;
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative mt-1.5">
       <Input
         value={query}
         onChange={(e) => { setQuery(e.target.value); setActiveSearch(group); }}
         onFocus={() => setActiveSearch(group)}
         placeholder="영웅 이름 검색"
-        className="text-sm h-8"
+        className="text-xs h-7"
       />
       {isActive && results.length > 0 && (
         <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-lg border border-border bg-popover shadow-lg overflow-hidden">
@@ -89,11 +70,14 @@ function HeroSearch({
               <button
                 key={hero.name}
                 onMouseDown={(e) => { e.preventDefault(); onAdd(hero, group); setQuery(""); setActiveSearch(null); }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+                className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent transition-colors text-left"
               >
                 <span>{hero.name}</span>
-                {hero.type && <span className="ml-auto text-xs text-muted-foreground">{hero.type}</span>}
-                {ts && <span className={cn("w-2 h-2 rounded-full shrink-0", ts.dot)} />}
+                {hero.type && ts && (
+                  <span className={cn("ml-auto text-[10px] rounded px-1.5 py-0.5 shrink-0", ts.className)}>
+                    {hero.type}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -103,444 +87,134 @@ function HeroSearch({
   );
 }
 
-// ── 메인 페이지 래퍼 (Suspense for useSearchParams) ──
+// 배틀 오더 슬롯 — 선택된 영웅의 팀/역할/속공을 인라인으로 표시
+function BattleSlot({
+  idx, value, enemyChips, allyChips, allySpeeds, setAllySpeeds, onChange,
+}: {
+  idx: number;
+  value: string;
+  enemyChips: Chip[];
+  allyChips: Chip[];
+  allySpeeds: Record<string, string>;
+  setAllySpeeds: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onChange: (name: string) => void;
+}) {
+  const isEnemy = value ? enemyChips.some((c) => c.name === value) : false;
+  const isAlly = value ? allyChips.some((c) => c.name === value) : false;
+  const chip = value ? [...enemyChips, ...allyChips].find((c) => c.name === value) : null;
+  const estimatedSpeed = isEnemy && chip ? SPEED_BASE[chip.type ?? "만능형"] : null;
 
-export default function SpeedCalcPageWrapper() {
-  return (
-    <Suspense>
-      <SpeedCalcPage />
-    </Suspense>
-  );
-}
-
-function SpeedCalcPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-
-  // URL params
-  const paramCastle = searchParams.get("castle") ?? "";
-  const paramOpponent = searchParams.get("opponent") ?? "";
-  const paramEnemy = searchParams.get("enemy") ?? "";
-  const paramAlly = searchParams.get("ally") ?? "";
-  const paramDeckId = searchParams.get("deckId") ?? "";
-  const paramTeamId = searchParams.get("teamId") ?? "";
-  const paramPlayer = searchParams.get("playerName") ?? "";
-
-  const [allHeroes, setAllHeroes] = useState<Hero[]>([]);
-  const [castle, setCastle] = useState(paramCastle || CASTLE_TYPES[0]);
-  const [opponent, setOpponent] = useState(paramOpponent);
-  const [playerName, setPlayerName] = useState(paramPlayer);
-  const [enemyChips, setEnemyChips] = useState<Chip[]>([]);
-  const [allyChips, setAllyChips] = useState<Chip[]>([]);
-  const [allySpeeds, setAllySpeeds] = useState<Record<string, string>>({});
-  const [battleOrder, setBattleOrder] = useState<string[]>(Array(6).fill(""));
-  const [activeSearch, setActiveSearch] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveMsg, setSaveMsg] = useState<string | null>(null);
-  const [records, setRecords] = useState<SpeedRecord[]>([]);
-  const [userRole, setUserRole] = useState<string>("");
-  const [initialized, setInitialized] = useState(false);
-
-  const enemyRef = useRef<HTMLDivElement>(null);
-  const allyRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const db = createClient();
-    db.from("heroes").select("*").order("name").then(({ data }) => {
-      const heroes = (data ?? []) as Hero[];
-      setAllHeroes(heroes);
-
-      // pre-fill from URL params
-      if (paramEnemy && !initialized) {
-        const names = paramEnemy.split(",").filter(Boolean);
-        setEnemyChips(names.map((n) => {
-          const h = heroes.find((x) => x.name === n);
-          return { name: n, type: (h?.type as HeroType | null) ?? null };
-        }));
-      }
-      if (paramAlly && !initialized) {
-        const names = paramAlly.split(",").filter(Boolean);
-        setAllyChips(names.map((n) => {
-          const h = heroes.find((x) => x.name === n);
-          return { name: n, type: (h?.type as HeroType | null) ?? null };
-        }));
-      }
-      setInitialized(true);
-    });
-
-    // fetch session role
-    fetch("/api/auth/me").then((r) => r.json()).then((d) => setUserRole(d?.role ?? "")).catch(() => {});
-
-    fetchRecords();
-  }, []);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (!enemyRef.current?.contains(e.target as Node) && !allyRef.current?.contains(e.target as Node)) {
-        setActiveSearch(null);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
-
-  async function fetchRecords() {
-    const { data } = await createClient().from("speed_records").select("*").order("recorded_at", { ascending: false });
-    setRecords((data ?? []) as SpeedRecord[]);
-  }
-
-  function addHero(hero: Hero, group: "enemy" | "ally") {
-    const chip: Chip = { name: hero.name, type: hero.type as HeroType | null };
-    if (group === "enemy") {
-      setEnemyChips((p) => p.find((c) => c.name === hero.name) ? p : [...p, chip]);
-    } else {
-      setAllyChips((p) => p.find((c) => c.name === hero.name) ? p : [...p, chip]);
-    }
-  }
-
-  function removeChip(name: string) {
-    setEnemyChips((p) => p.filter((c) => c.name !== name));
-    setAllyChips((p) => p.filter((c) => c.name !== name));
-    setBattleOrder((p) => p.map((s) => s === name ? "" : s));
-    setAllySpeeds((p) => { const n = { ...p }; delete n[name]; return n; });
-  }
-
-  // 적군 속공 추정 (SPEED_BASE 기반)
-  const enemySpeeds: Record<string, number> = {};
-  for (const c of enemyChips) {
-    enemySpeeds[c.name] = SPEED_BASE[c.type ?? "만능형"];
-  }
-
-  const allyTotal = allyChips.reduce((s, c) => s + (Number(allySpeeds[c.name]) || 0), 0);
-  const enemyTotal = Object.values(enemySpeeds).reduce((s, v) => s + v, 0);
-
-  const allChips = [...enemyChips, ...allyChips];
-  const usedNames = [...enemyChips.map((c) => c.name), ...allyChips.map((c) => c.name)];
-
-  const isAdmin = ["슈퍼개발자", "관리자"].includes(userRole);
-
-  async function handleSave() {
-    if (!castle) { setSaveMsg("성을 선택해주세요."); return; }
-    if (!playerName.trim()) { setSaveMsg("기록자 이름을 입력해주세요."); return; }
-    if (allyChips.length === 0 && enemyChips.length === 0) { setSaveMsg("영웅을 추가해주세요."); return; }
-
-    setSaving(true);
-    setSaveMsg(null);
-
-    const allySpeedsNum: Record<string, number> = {};
-    for (const c of allyChips) allySpeedsNum[c.name] = Number(allySpeeds[c.name]) || 0;
-
-    const body = {
-      castle_type: castle,
-      opponent_name: opponent.trim() || null,
-      enemy_heroes: enemyChips.map((c) => c.name),
-      ally_heroes: allyChips.map((c) => c.name),
-      deck_id: paramDeckId || null,
-      defense_team_id: paramTeamId || null,
-      battle_order: battleOrder.filter(Boolean),
-      ally_speeds: allySpeedsNum,
-      enemy_speeds: enemySpeeds,
-      ally_total: allyTotal,
-      enemy_total: enemyTotal,
-      recorder_name: playerName.trim(),
-    };
-
-    const res = await fetch("/api/speed-records", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    setSaving(false);
-    if (res.ok) {
-      setSaveMsg("✅ 저장되었습니다.");
-      await fetchRecords();
-    } else {
-      setSaveMsg("❌ 저장 실패. 다시 시도해주세요.");
-    }
-  }
-
-  async function handleDeleteRecord(id: string) {
-    if (!confirm("이 기록을 삭제할까요?")) return;
-    await fetch(`/api/speed-records/${id}`, { method: "DELETE" });
-    await fetchRecords();
-  }
-
-  async function handleResetAll() {
-    if (!confirm("속공 기록을 전체 초기화할까요?")) return;
-    await fetch("/api/speed-records", { method: "DELETE" });
-    await fetchRecords();
-  }
-
-  return (
-    <div className="space-y-4 max-w-lg mx-auto">
-      {/* ── 기본 정보 ── */}
-      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-lg">
-        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2 bg-muted/10">
-          <Zap size={15} className="text-yellow-400" />
-          <span className="font-bold text-sm">속공 계산기</span>
-          {(paramCastle || paramOpponent) && (
-            <button
-              onClick={() => router.push("/speed-calc")}
-              className="ml-auto text-xs text-muted-foreground hover:text-foreground"
-            >
-              초기화
-            </button>
-          )}
-        </div>
-
-        <div className="px-4 py-3 border-b border-border/20 grid grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">🏰 공격한 성</p>
-            <select
-              value={castle}
-              onChange={(e) => setCastle(e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-            >
-              {CASTLE_TYPES.map((c) => <option key={c}>{c}</option>)}
-            </select>
-          </div>
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">🎭 상대 닉네임</p>
-            <Input
-              value={opponent}
-              onChange={(e) => setOpponent(e.target.value)}
-              placeholder="상대 닉네임"
-              className="h-9"
-            />
-          </div>
-        </div>
-
-        {/* ── 상대 방어팀 ── */}
-        <div className="px-4 py-3 border-b border-border/20 space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground">🔴 상대 방어팀</p>
-          <div className="flex flex-wrap gap-1.5">
-            {enemyChips.map((c) => (
-              <ChipBadge key={c.name} chip={c} onRemove={removeChip} />
-            ))}
-          </div>
-          {enemyChips.length < 3 && (
-            <HeroSearch
-              group="enemy"
-              allHeroes={allHeroes}
-              used={usedNames}
-              onAdd={addHero}
-              activeSearch={activeSearch}
-              setActiveSearch={setActiveSearch}
-              containerRef={enemyRef}
-            />
-          )}
-          {enemyChips.length >= 3 && (
-            <p className="text-xs text-muted-foreground">3명 선택됨</p>
-          )}
-        </div>
-
-        {/* ── 우리 공격덱 ── */}
-        <div className="px-4 py-3 border-b border-border/20 space-y-2">
-          <p className="text-xs font-semibold text-muted-foreground">🔵 우리 공격덱</p>
-          <div className="flex flex-wrap gap-1.5">
-            {allyChips.map((c) => (
-              <ChipBadge key={c.name} chip={c} onRemove={removeChip} />
-            ))}
-          </div>
-          {allyChips.length < 3 && (
-            <HeroSearch
-              group="ally"
-              allHeroes={allHeroes}
-              used={usedNames}
-              onAdd={addHero}
-              activeSearch={activeSearch}
-              setActiveSearch={setActiveSearch}
-              containerRef={allyRef}
-            />
-          )}
-          {allyChips.length >= 3 && (
-            <p className="text-xs text-muted-foreground">3명 선택됨</p>
-          )}
-        </div>
-
-        {/* ── 속공 수치 입력 ── */}
-        <div className="px-4 py-3 border-b border-border/20 space-y-3">
-          <p className="text-xs font-semibold text-muted-foreground">⚡ 속공 수치</p>
-
-          {allyChips.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs text-blue-400 font-medium">🔵 우리팀 (직접 입력)</p>
-              {allyChips.map((c) => (
-                <div key={c.name} className="flex items-center gap-2">
-                  <ChipBadge chip={c} />
-                  <Input
-                    type="number"
-                    min={0}
-                    value={allySpeeds[c.name] ?? ""}
-                    onChange={(e) => setAllySpeeds((p) => ({ ...p, [c.name]: e.target.value }))}
-                    placeholder="속공 값"
-                    className="w-24 h-8 text-sm"
-                  />
-                </div>
-              ))}
-              <div className="text-xs font-bold text-blue-300">
-                우리 합산: <span className="text-base">{allyTotal}</span>
-              </div>
-            </div>
-          )}
-
-          {enemyChips.length > 0 && (
-            <div className="space-y-2">
-              <p className="text-xs text-red-400 font-medium">🔴 상대팀 (역할군 기본값 추정)</p>
-              {enemyChips.map((c) => (
-                <div key={c.name} className="flex items-center gap-2">
-                  <ChipBadge chip={c} />
-                  <span className="text-sm font-semibold text-muted-foreground w-10">
-                    {enemySpeeds[c.name]}
-                  </span>
-                  <span className="text-xs text-muted-foreground/60">
-                    ({c.type ?? "??"} 기본값)
-                  </span>
-                </div>
-              ))}
-              <div className="text-xs font-bold text-red-300">
-                상대 합산 (추정): <span className="text-base">{enemyTotal}</span>
-              </div>
-            </div>
-          )}
-
-          {(allyChips.length > 0 || enemyChips.length > 0) && (
-            <div className={cn(
-              "rounded-xl px-3 py-2 text-sm font-bold border",
-              allyTotal > enemyTotal
-                ? "bg-blue-500/10 border-blue-500/40 text-blue-300"
-                : allyTotal < enemyTotal
-                  ? "bg-red-500/10 border-red-500/40 text-red-300"
-                  : "bg-muted/20 border-border text-muted-foreground"
-            )}>
-              {allyTotal > enemyTotal
-                ? `✅ 우리팀 속공 우세 (${allyTotal} > ${enemyTotal})`
-                : allyTotal < enemyTotal
-                  ? `❌ 상대 속공 우세 (${enemyTotal} > ${allyTotal})`
-                  : `⚖️ 속공 동점 (${allyTotal})`}
-            </div>
-          )}
-        </div>
-
-        {/* ── 전투 순서 ── */}
-        <div className="px-4 py-3 border-b border-border/20 space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground">🗡️ 실제 전투 순서</p>
-            <button
-              onClick={() => setBattleOrder(Array(6).fill(""))}
-              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-            >
-              <RotateCcw size={10} />초기화
-            </button>
-          </div>
-          <div className="space-y-1.5">
-            {battleOrder.map((val, idx) => (
-              <div key={idx} className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-muted/40 flex items-center justify-center text-xs font-black shrink-0 text-muted-foreground">
-                  {idx + 1}
-                </div>
-                <select
-                  value={val}
-                  onChange={(e) => setBattleOrder((p) => p.map((s, i) => i === idx ? e.target.value : s))}
-                  className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm"
-                >
-                  <option value="">선택 안 함</option>
-                  {enemyChips.length > 0 && (
-                    <optgroup label="🔴 상대 방어팀">
-                      {enemyChips.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </optgroup>
-                  )}
-                  {allyChips.length > 0 && (
-                    <optgroup label="🔵 우리팀 공격덱">
-                      {allyChips.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── 기록자 & 저장 ── */}
-        <div className="px-4 py-3 space-y-3">
-          <div className="space-y-1">
-            <p className="text-xs text-muted-foreground">기록자 닉네임</p>
-            <Input
-              value={playerName}
-              onChange={(e) => setPlayerName(e.target.value)}
-              placeholder="내 닉네임"
-              className="h-9"
-            />
-          </div>
-          {saveMsg && (
-            <p className={cn(
-              "text-xs font-medium",
-              saveMsg.startsWith("✅") ? "text-green-400" : "text-red-400"
-            )}>
-              {saveMsg}
-            </p>
-          )}
+  if (value) {
+    // 영웅 선택된 상태 — 카드 스타일
+    return (
+      <div className={cn(
+        "rounded-lg border overflow-hidden",
+        isEnemy ? "border-red-700/50" : "border-blue-700/50"
+      )}>
+        {/* 헤더 */}
+        <div className={cn(
+          "flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold",
+          isEnemy ? "bg-red-950/40 text-red-400" : "bg-blue-950/40 text-blue-400"
+        )}>
+          <span className={cn(
+            "w-4.5 h-4.5 rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0",
+            isEnemy ? "bg-red-600" : "bg-blue-600"
+          )} style={{ width: 18, height: 18 }}>
+            {idx + 1}
+          </span>
+          {isEnemy ? "적군" : "아군"}
+          <ChevronDown size={11} className="ml-0.5" />
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-3 rounded-xl font-black text-sm bg-yellow-500 hover:bg-yellow-400 text-black transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+            onClick={() => onChange("")}
+            className="ml-auto text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Zap size={14} />
-            {saving ? "저장 중..." : "속공 기록 저장"}
+            <X size={12} />
           </button>
         </div>
-      </div>
-
-      {/* ── 속공 기록 목록 ── */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-bold">📋 속공 기록</p>
-          {isAdmin && records.length > 0 && (
-            <button
-              onClick={handleResetAll}
-              className="text-xs text-red-400 hover:text-red-300 border border-red-500/40 rounded-lg px-2.5 py-1 hover:bg-red-500/10 transition-colors flex items-center gap-1"
-            >
-              <Trash2 size={11} />전체 초기화
-            </button>
+        {/* 내용 */}
+        <div className="flex items-center gap-2 px-2.5 py-2">
+          <select
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="flex-1 bg-transparent text-sm font-medium border-none outline-none cursor-pointer"
+          >
+            <option value={value}>{value}</option>
+            {enemyChips.filter((c) => c.name !== value).map((c) => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+            {allyChips.filter((c) => c.name !== value).map((c) => (
+              <option key={c.name} value={c.name}>{c.name}</option>
+            ))}
+          </select>
+          {isEnemy && chip?.type && (
+            <span className={cn(
+              "shrink-0 text-[10px] rounded px-1.5 py-0.5 border border-red-500/40 text-red-300"
+            )}>
+              {chip.type}
+            </span>
+          )}
+          {isAlly && (
+            <div className="flex items-center gap-1 shrink-0">
+              <Input
+                type="number"
+                min={0}
+                value={allySpeeds[value] ?? ""}
+                onChange={(e) => setAllySpeeds((p) => ({ ...p, [value]: e.target.value }))}
+                placeholder="속공"
+                className="w-16 h-6 text-xs px-2"
+              />
+              <Zap size={11} className="text-yellow-400 shrink-0" />
+            </div>
           )}
         </div>
-
-        {records.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-8">기록이 없습니다.</p>
-        ) : (
-          records.map((r) => (
-            <SpeedRecordCard
-              key={r.id}
-              record={r}
-              isAdmin={isAdmin}
-              onDelete={handleDeleteRecord}
-            />
-          ))
+        {isEnemy && estimatedSpeed !== null && (
+          <div className="px-2.5 pb-1.5 text-[10px] text-muted-foreground/60">
+            기본 속공 추정: {estimatedSpeed}
+          </div>
         )}
       </div>
+    );
+  }
+
+  // 비어있는 슬롯 — 심플 셀렉트
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-5 h-5 rounded-full bg-muted/40 flex items-center justify-center text-[10px] font-black shrink-0 text-muted-foreground">
+        {idx + 1}
+      </span>
+      <select
+        value=""
+        onChange={(e) => onChange(e.target.value)}
+        className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm text-muted-foreground"
+      >
+        <option value="">선택</option>
+        {enemyChips.length > 0 && (
+          <optgroup label="🔴 상대 방어팀">
+            {enemyChips.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </optgroup>
+        )}
+        {allyChips.length > 0 && (
+          <optgroup label="🔵 우리팀 공격덱">
+            {allyChips.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+          </optgroup>
+        )}
+      </select>
     </div>
   );
 }
 
-function SpeedRecordCard({
-  record: r, isAdmin, onDelete,
-}: {
-  record: SpeedRecord;
-  isAdmin: boolean;
-  onDelete: (id: string) => void;
+// ── 기록 카드 ────────────────────────────────────────────────────────────
+
+function SpeedRecordCard({ record: r, isAdmin, onDelete }: {
+  record: SpeedRecord; isAdmin: boolean; onDelete: (id: string) => void;
 }) {
   const allyWin = r.ally_total > r.enemy_total;
   const enemyWin = r.enemy_total > r.ally_total;
-
   return (
     <div className="rounded-xl border border-border/50 bg-card overflow-hidden text-sm shadow-sm">
-      {/* 헤더 */}
       <div className="px-4 py-2.5 bg-muted/10 border-b border-border/30 flex items-center gap-2">
         <span className="font-bold text-xs">🏰 {r.castle_type}</span>
-        {r.opponent_name && (
-          <span className="text-xs text-muted-foreground">vs {r.opponent_name}</span>
-        )}
+        {r.opponent_name && <span className="text-xs text-muted-foreground">vs {r.opponent_name}</span>}
         <span className={cn(
           "ml-auto text-xs font-bold px-2 py-0.5 rounded-full",
           allyWin ? "bg-blue-500/20 text-blue-300" : enemyWin ? "bg-red-500/20 text-red-300" : "bg-muted text-muted-foreground"
@@ -553,9 +227,7 @@ function SpeedRecordCard({
           </button>
         )}
       </div>
-
       <div className="px-4 py-3 space-y-2.5">
-        {/* 방어팀 / 공격덱 */}
         <div className="grid grid-cols-2 gap-2">
           <div>
             <p className="text-[11px] text-muted-foreground mb-1">🔴 상대 방어팀</p>
@@ -573,30 +245,451 @@ function SpeedRecordCard({
               ))}
             </div>
             {r.defense_team_id && (
-              <a
-                href={`/attack?team=${r.defense_team_id}`}
-                className="mt-1 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground"
-              >
+              <a href={`/attack?team=${r.defense_team_id}`} className="mt-1 inline-flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-foreground">
                 <ExternalLink size={9} />공략 보기
               </a>
             )}
           </div>
         </div>
-
-        {/* 속공 수치 */}
         <div className="flex items-center gap-3 text-xs">
           <span className="text-blue-300 font-bold">우리 {r.ally_total}</span>
           <span className="text-muted-foreground">vs</span>
           <span className="text-red-300 font-bold">상대 {r.enemy_total} (추정)</span>
         </div>
-
-        {/* 메타 */}
         <div className="flex items-center gap-2 text-[11px] text-muted-foreground border-t border-border/30 pt-2">
           <span>기록: {r.recorder_name}</span>
           <span className="ml-auto">
             {new Date(r.recorded_at).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 페이지 래퍼 (Suspense for useSearchParams) ────────────────────────────
+
+export default function SpeedCalcPageWrapper() {
+  return (
+    <Suspense>
+      <SpeedCalcPage />
+    </Suspense>
+  );
+}
+
+function SpeedCalcPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const paramCastle = searchParams.get("castle") ?? "";
+  const paramOpponent = searchParams.get("opponent") ?? "";
+  const paramEnemy = searchParams.get("enemy") ?? "";
+  const paramAlly = searchParams.get("ally") ?? "";
+  const paramDeckId = searchParams.get("deckId") ?? "";
+  const paramTeamId = searchParams.get("teamId") ?? "";
+  const paramPlayer = searchParams.get("playerName") ?? "";
+
+  const [allHeroes, setAllHeroes] = useState<Hero[]>([]);
+  const [castle, setCastle] = useState(paramCastle || CASTLE_TYPES[0]);
+  const [opponent, setOpponent] = useState(paramOpponent);
+  const [playerName, setPlayerName] = useState(paramPlayer);
+  const [enemyChips, setEnemyChips] = useState<Chip[]>([]);
+  const [allyChips, setAllyChips] = useState<Chip[]>([]);
+  const [otherChips, setOtherChips] = useState<Chip[]>([]);
+  const [showOther, setShowOther] = useState(false);
+  const [allySpeeds, setAllySpeeds] = useState<Record<string, string>>({});
+  const [battleOrder, setBattleOrder] = useState<string[]>(Array(6).fill(""));
+  const [speedResult, setSpeedResult] = useState<"승" | "패">("승");
+  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [activeSearch, setActiveSearch] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [records, setRecords] = useState<SpeedRecord[]>([]);
+  const [userRole, setUserRole] = useState<string>("");
+  const [initialized, setInitialized] = useState(false);
+
+  const enemyRef = useRef<HTMLDivElement>(null);
+  const allyRef = useRef<HTMLDivElement>(null);
+  const otherRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    createClient().from("heroes").select("*").order("name").then(({ data }) => {
+      const heroes = (data ?? []) as Hero[];
+      setAllHeroes(heroes);
+      if (!initialized) {
+        if (paramEnemy) {
+          setEnemyChips(paramEnemy.split(",").filter(Boolean).map((n) => {
+            const h = heroes.find((x) => x.name === n);
+            return { name: n, type: (h?.type as HeroType | null) ?? null };
+          }));
+        }
+        if (paramAlly) {
+          setAllyChips(paramAlly.split(",").filter(Boolean).map((n) => {
+            const h = heroes.find((x) => x.name === n);
+            return { name: n, type: (h?.type as HeroType | null) ?? null };
+          }));
+        }
+        setInitialized(true);
+      }
+    });
+    fetch("/api/auth/me").then((r) => r.json()).then((d) => setUserRole(d?.role ?? "")).catch(() => {});
+    fetchRecords();
+  }, []);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      const refs = [enemyRef, allyRef, otherRef];
+      if (refs.every((r) => !r.current?.contains(e.target as Node))) setActiveSearch(null);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  async function fetchRecords() {
+    const { data } = await createClient().from("speed_records").select("*").order("recorded_at", { ascending: false });
+    setRecords((data ?? []) as SpeedRecord[]);
+  }
+
+  function addHero(hero: Hero, group: "enemy" | "ally" | "other") {
+    const chip: Chip = { name: hero.name, type: hero.type as HeroType | null };
+    if (group === "enemy") setEnemyChips((p) => p.find((c) => c.name === hero.name) ? p : [...p, chip]);
+    else if (group === "ally") setAllyChips((p) => p.find((c) => c.name === hero.name) ? p : [...p, chip]);
+    else setOtherChips((p) => p.find((c) => c.name === hero.name) ? p : [...p, chip]);
+  }
+
+  function removeChip(name: string) {
+    setEnemyChips((p) => p.filter((c) => c.name !== name));
+    setAllyChips((p) => p.filter((c) => c.name !== name));
+    setOtherChips((p) => p.filter((c) => c.name !== name));
+    setBattleOrder((p) => p.map((s) => s === name ? "" : s));
+    setAllySpeeds((p) => { const n = { ...p }; delete n[name]; return n; });
+    setAnalysis(null);
+  }
+
+  function setOrderSlot(idx: number, name: string) {
+    setBattleOrder((p) => p.map((s, i) => i === idx ? name : s));
+    setAnalysis(null);
+  }
+
+  const allUsed = [...enemyChips.map((c) => c.name), ...allyChips.map((c) => c.name), ...otherChips.map((c) => c.name)];
+
+  const enemySpeeds: Record<string, number> = {};
+  for (const c of enemyChips) enemySpeeds[c.name] = SPEED_BASE[c.type ?? "만능형"];
+
+  const allyTotal = allyChips.reduce((s, c) => s + (Number(allySpeeds[c.name]) || 0), 0);
+  const enemyTotal = Object.values(enemySpeeds).reduce((s, v) => s + v, 0);
+
+  const placedNames = new Set(battleOrder.filter(Boolean));
+  const isAdmin = ["슈퍼개발자", "관리자"].includes(userRole);
+
+  function handleAnalyze() {
+    const filled = battleOrder.filter(Boolean);
+    if (filled.length === 0) { setAnalysis("전투 순서를 입력해주세요."); return; }
+    const enemyNames = new Set(enemyChips.map((c) => c.name));
+    const allyNames = new Set(allyChips.map((c) => c.name));
+    const firstAllyIdx = battleOrder.findIndex((n) => n && allyNames.has(n));
+    const firstEnemyIdx = battleOrder.findIndex((n) => n && enemyNames.has(n));
+    let msg = "";
+    if (firstAllyIdx !== -1 && firstEnemyIdx !== -1) {
+      if (firstAllyIdx < firstEnemyIdx)
+        msg = speedResult === "승" ? `✅ 아군 선행 — 속공 따냄 (우리 합산 ${allyTotal})` : `⚠️ 순서상 아군 선행인데 속공 패 — 수치 재확인 필요`;
+      else
+        msg = speedResult === "패" ? `📌 적군 선행 — 속공 잃음 (상대 추정 ${enemyTotal})` : `⚠️ 순서상 적군 선행인데 속공 승 — 수치 재확인 필요`;
+    } else if (firstAllyIdx !== -1) {
+      msg = `🔵 아군만 배치됨 — 합산 속공 ${allyTotal}`;
+    } else if (firstEnemyIdx !== -1) {
+      msg = `🔴 적군만 배치됨 — 추정 속공 ${enemyTotal}`;
+    } else {
+      msg = "아군/적군 캐릭터를 전투 순서에 추가해주세요.";
+    }
+    setAnalysis(msg);
+  }
+
+  async function handleSave() {
+    if (!playerName.trim()) { setSaveMsg("기록자 이름을 입력해주세요."); return; }
+    if (allyChips.length === 0 && enemyChips.length === 0) { setSaveMsg("영웅을 추가해주세요."); return; }
+    setSaving(true); setSaveMsg(null);
+    const allySpeedsNum: Record<string, number> = {};
+    for (const c of allyChips) allySpeedsNum[c.name] = Number(allySpeeds[c.name]) || 0;
+    const res = await fetch("/api/speed-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        castle_type: castle,
+        opponent_name: opponent.trim() || null,
+        enemy_heroes: enemyChips.map((c) => c.name),
+        ally_heroes: allyChips.map((c) => c.name),
+        deck_id: paramDeckId || null,
+        defense_team_id: paramTeamId || null,
+        battle_order: battleOrder.filter(Boolean),
+        ally_speeds: allySpeedsNum,
+        enemy_speeds: enemySpeeds,
+        ally_total: allyTotal,
+        enemy_total: enemyTotal,
+        recorder_name: playerName.trim(),
+      }),
+    });
+    setSaving(false);
+    if (res.ok) { setSaveMsg("✅ 저장되었습니다."); await fetchRecords(); }
+    else setSaveMsg("❌ 저장 실패. 다시 시도해주세요.");
+  }
+
+  async function handleDeleteRecord(id: string) {
+    if (!confirm("이 기록을 삭제할까요?")) return;
+    await fetch(`/api/speed-records/${id}`, { method: "DELETE" });
+    await fetchRecords();
+  }
+
+  async function handleResetAll() {
+    if (!confirm("속공 기록을 전체 초기화할까요?")) return;
+    await fetch("/api/speed-records", { method: "DELETE" });
+    await fetchRecords();
+  }
+
+  // ── 칩 렌더 헬퍼 (배치됨: ✓, 미배치: ●) ──────────────────────────────
+  function renderChips(chips: Chip[], colorClass: string) {
+    return chips.map((c) => {
+      const ts = c.type ? TYPE_STYLE[c.type] : null;
+      const placed = placedNames.has(c.name);
+      return (
+        <button
+          key={c.name}
+          onClick={() => removeChip(c.name)}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold border transition-opacity hover:opacity-70",
+            ts ? ts.className : colorClass,
+            placed ? "border-current/40" : "border-transparent opacity-70"
+          )}
+        >
+          <span className="text-[10px]">{placed ? "✓" : "●"}</span>
+          {c.name}
+          <X size={9} className="opacity-60" />
+        </button>
+      );
+    });
+  }
+
+  return (
+    <div className="space-y-4 max-w-sm mx-auto">
+      {/* ── 계산기 카드 ── */}
+      <div className="rounded-2xl border border-border/50 bg-card overflow-hidden shadow-lg">
+        {/* 헤더 */}
+        <div className="px-4 py-3 border-b border-border/30 flex items-center gap-2 bg-gradient-to-r from-blue-900/30 to-cyan-900/20">
+          <Zap size={15} className="text-yellow-400" />
+          <span className="font-bold text-sm">속공 계산기</span>
+          {(paramCastle || paramOpponent) && (
+            <span className="text-xs text-muted-foreground ml-1">
+              {paramCastle && `· ${paramCastle}`}{paramOpponent && ` · ${paramOpponent}`}
+            </span>
+          )}
+          {(paramCastle || paramOpponent) && (
+            <button
+              onClick={() => router.push("/speed-calc")}
+              className="ml-auto rounded-full bg-muted/30 p-1 hover:bg-muted/60 transition-colors"
+            >
+              <X size={13} className="text-muted-foreground" />
+            </button>
+          )}
+        </div>
+
+        {/* 속공 결과 */}
+        <div className="px-4 py-3 border-b border-border/20 space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground">⚡ 속공 결과</p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["승", "패"] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => { setSpeedResult(v); setAnalysis(null); }}
+                className={cn(
+                  "py-2.5 rounded-xl text-sm font-black border-2 transition-all",
+                  speedResult === v
+                    ? v === "승"
+                      ? "bg-green-600/20 border-green-500 text-green-300"
+                      : "bg-red-600/20 border-red-500 text-red-300"
+                    : "border-border/50 text-muted-foreground hover:bg-accent/30"
+                )}
+              >
+                {v === "승" ? "🏆 승리" : "💀 패배"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 상대 방어팀 */}
+        <div className="px-4 py-3 border-b border-border/20 space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground">
+            🔴 상대 방어팀
+            {enemyChips.length > 0 && (
+              <span className="ml-1.5 font-normal opacity-60">
+                ({enemyChips.map((c) => c.name).join(" ")})
+              </span>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {renderChips(enemyChips, "bg-red-900/40 text-red-300 border-red-700/40")}
+          </div>
+          {enemyChips.length < 3 && (
+            <HeroSearch group="enemy" allHeroes={allHeroes} used={allUsed} onAdd={addHero}
+              activeSearch={activeSearch} setActiveSearch={setActiveSearch} containerRef={enemyRef} />
+          )}
+        </div>
+
+        {/* 우리팀 공격덱 */}
+        <div className="px-4 py-3 border-b border-border/20 space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground">
+            🔵 우리팀 공격덱
+            {allyChips.length > 0 && (
+              <span className="ml-1.5 font-normal opacity-60">
+                ({allyChips.map((c) => c.name).join(" ")})
+              </span>
+            )}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {renderChips(allyChips, "bg-blue-900/40 text-blue-300 border-blue-700/40")}
+          </div>
+          {allyChips.length < 3 && (
+            <HeroSearch group="ally" allHeroes={allHeroes} used={allUsed} onAdd={addHero}
+              activeSearch={activeSearch} setActiveSearch={setActiveSearch} containerRef={allyRef} />
+          )}
+        </div>
+
+        {/* 기타 캐릭터 검색 */}
+        <div className="px-4 py-2.5 border-b border-border/20">
+          <button
+            onClick={() => setShowOther((p) => !p)}
+            className="w-full flex items-center justify-between text-xs font-semibold text-muted-foreground"
+          >
+            <span>👥 기타 캐릭터 검색</span>
+            {showOther ? <ChevronUp size={12} /> : <span className="text-muted-foreground/50 text-[11px]">펼치기 ▼</span>}
+          </button>
+          {showOther && (
+            <div className="mt-2 space-y-1.5">
+              <div className="flex flex-wrap gap-1.5">
+                {otherChips.map((c) => {
+                  const ts = c.type ? TYPE_STYLE[c.type] : null;
+                  return (
+                    <button
+                      key={c.name}
+                      onClick={() => removeChip(c.name)}
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold border border-transparent hover:opacity-70",
+                        ts ? ts.className : "bg-muted text-muted-foreground"
+                      )}
+                    >
+                      {c.name}<X size={9} className="opacity-60" />
+                    </button>
+                  );
+                })}
+              </div>
+              <HeroSearch group="other" allHeroes={allHeroes} used={allUsed} onAdd={addHero}
+                activeSearch={activeSearch} setActiveSearch={setActiveSearch} containerRef={otherRef} />
+            </div>
+          )}
+        </div>
+
+        {/* 전투 순서 */}
+        <div className="px-4 py-3 border-b border-border/20 space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-muted-foreground">🗡️ 전투 순서 (위에서 아래로)</p>
+            <button
+              onClick={() => { setBattleOrder(Array(6).fill("")); setAnalysis(null); }}
+              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-0.5"
+            >
+              <RotateCcw size={10} />전체 초기화
+            </button>
+          </div>
+          <p className="text-[10px] text-muted-foreground/60">아군 최대 3개, 적군 최대 3개까지 입력 가능</p>
+          <div className="space-y-2">
+            {battleOrder.map((val, idx) => (
+              <BattleSlot
+                key={idx}
+                idx={idx}
+                value={val}
+                enemyChips={enemyChips}
+                allyChips={allyChips}
+                allySpeeds={allySpeeds}
+                setAllySpeeds={setAllySpeeds}
+                onChange={(name) => setOrderSlot(idx, name)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* 분석 결과 */}
+        {analysis && (
+          <div className={cn(
+            "mx-4 my-2 rounded-xl px-3 py-2.5 text-sm font-semibold border",
+            analysis.startsWith("✅") ? "bg-green-500/10 border-green-500/30 text-green-400" :
+            analysis.startsWith("📌") ? "bg-red-500/10 border-red-500/30 text-red-400" :
+            analysis.startsWith("⚠️") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400" :
+            "bg-muted/30 border-border text-muted-foreground"
+          )}>
+            {analysis}
+          </div>
+        )}
+
+        {/* 기록자 + 저장 */}
+        <div className="px-4 py-3 space-y-2.5">
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">성 · 상대</p>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={castle}
+                onChange={(e) => setCastle(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+              >
+                {CASTLE_TYPES.map((c) => <option key={c}>{c}</option>)}
+              </select>
+              <Input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="상대 닉네임" className="h-9" />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs text-muted-foreground">기록자</p>
+            <Input value={playerName} onChange={(e) => setPlayerName(e.target.value)} placeholder="내 닉네임" className="h-9" />
+          </div>
+          {saveMsg && (
+            <p className={cn("text-xs font-medium", saveMsg.startsWith("✅") ? "text-green-400" : "text-red-400")}>
+              {saveMsg}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={handleAnalyze}
+              className="py-3 rounded-xl font-black text-sm bg-blue-600 hover:bg-blue-500 text-white transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Zap size={14} />분석하기
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="py-3 rounded-xl font-black text-sm bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
+            >
+              💾 {saving ? "저장 중..." : "저장하기"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 속공 기록 목록 ── */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-bold">📋 속공 기록</p>
+          {isAdmin && records.length > 0 && (
+            <button
+              onClick={handleResetAll}
+              className="text-xs text-red-400 hover:text-red-300 border border-red-500/40 rounded-lg px-2.5 py-1 hover:bg-red-500/10 transition-colors flex items-center gap-1"
+            >
+              <Trash2 size={11} />전체 초기화
+            </button>
+          )}
+        </div>
+        {records.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-8">기록이 없습니다.</p>
+        ) : (
+          records.map((r) => (
+            <SpeedRecordCard key={r.id} record={r} isAdmin={isAdmin} onDelete={handleDeleteRecord} />
+          ))
+        )}
       </div>
     </div>
   );
