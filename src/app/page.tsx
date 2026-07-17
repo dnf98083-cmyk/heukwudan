@@ -1,73 +1,106 @@
 import Link from "next/link";
-import { Shield, Swords, BookOpen, TrendingUp } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Swords, Calendar, Shield, Zap, Trophy, BookOpen } from "lucide-react";
 
-const sections = [
+const FEATURES = [
+  {
+    href: "/attack",
+    icon: Swords,
+    label: "길드전 공격",
+    desc: "상대 방어팀 공략 확인 및 공격 결과 기록",
+    color: "text-red-400",
+    border: "border-red-500/30",
+    bg: "bg-red-500/8",
+    glow: "hover:border-red-500/60 hover:bg-red-500/12",
+  },
+  {
+    href: "/guild-war",
+    icon: Calendar,
+    label: "오늘의 길드전",
+    desc: "성별 속공 기록 및 상대 속공 추정 확인",
+    color: "text-amber-400",
+    border: "border-amber-500/30",
+    bg: "bg-amber-500/8",
+    glow: "hover:border-amber-500/60 hover:bg-amber-500/12",
+  },
   {
     href: "/defense",
     icon: Shield,
-    title: "방어팀 공략",
-    description: "영웅 조합별 장비, 메인옵, 스탯 공략을 확인하세요.",
+    label: "방어팀 공략",
+    desc: "우리 길드 방어팀 구성과 공략 안 관리",
     color: "text-blue-400",
-    bg: "bg-blue-400/10",
+    border: "border-blue-500/30",
+    bg: "bg-blue-500/8",
+    glow: "hover:border-blue-500/60 hover:bg-blue-500/12",
+  },
+  {
+    href: "/speed-calc",
+    icon: Zap,
+    label: "속공 계산기",
+    desc: "전투 순서로 상대 속공 범위 유추",
+    color: "text-yellow-400",
+    border: "border-yellow-500/30",
+    bg: "bg-yellow-500/8",
+    glow: "hover:border-yellow-500/60 hover:bg-yellow-500/12",
   },
   {
     href: "/records",
-    icon: Swords,
-    title: "수비 기록",
-    description: "길드원 수비 승패 기록 및 시즌 승률을 확인하세요.",
-    color: "text-red-400",
-    bg: "bg-red-400/10",
+    icon: Trophy,
+    label: "랭킹",
+    desc: "길드원 공격·수비 승률 순위",
+    color: "text-emerald-400",
+    border: "border-emerald-500/30",
+    bg: "bg-emerald-500/8",
+    glow: "hover:border-emerald-500/60 hover:bg-emerald-500/12",
   },
   {
     href: "/heroes",
     icon: BookOpen,
-    title: "영웅 도감",
-    description: "세나리버스 영웅 정보를 한눈에 확인하세요.",
-    color: "text-green-400",
-    bg: "bg-green-400/10",
+    label: "영웅 도감",
+    desc: "세나리버스 전체 영웅 정보 확인",
+    color: "text-purple-400",
+    border: "border-purple-500/30",
+    bg: "bg-purple-500/8",
+    glow: "hover:border-purple-500/60 hover:bg-purple-500/12",
   },
 ];
 
 export default function HomePage() {
   return (
-    <div className="space-y-8">
-      <div className="text-center space-y-2 py-8">
-        <h1 className="text-3xl font-bold tracking-tight">⚔️ 흑우단 공략</h1>
-        <p className="text-muted-foreground">세븐나이츠 리버스 길드 공략 허브</p>
+    <div className="space-y-10">
+      {/* 히어로 배너 */}
+      <div className="relative rounded-2xl border border-border/40 bg-gradient-to-br from-red-950/30 via-background to-background overflow-hidden px-6 py-10 text-center">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(220,38,38,0.08),_transparent_60%)]" />
+        <div className="relative space-y-2">
+          <p className="text-xs font-semibold text-red-400 tracking-[0.2em] uppercase">세븐나이츠 리버스</p>
+          <h1 className="text-4xl font-black tracking-tight">⚔️ 흑우단 공략</h1>
+          <p className="text-muted-foreground text-sm mt-1">길드전 공략·기록·분석 통합 관리</p>
+        </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {sections.map(({ href, icon: Icon, title, description, color, bg }) => (
-          <Link key={href} href={href}>
-            <Card className="h-full transition-colors hover:bg-accent/30 cursor-pointer">
-              <CardHeader className="pb-2">
-                <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center mb-2`}>
-                  <Icon size={20} className={color} />
-                </div>
-                <CardTitle className="text-base">{title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{description}</p>
-              </CardContent>
-            </Card>
+      {/* 기능 그리드 */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {FEATURES.map(({ href, icon: Icon, label, desc, color, border, bg, glow }) => (
+          <Link
+            key={href}
+            href={href}
+            className={`group rounded-xl border ${border} ${bg} ${glow} p-4 flex flex-col gap-3 transition-all duration-200`}
+          >
+            <div className={`w-9 h-9 rounded-lg bg-background/60 border ${border} flex items-center justify-center`}>
+              <Icon size={18} className={color} />
+            </div>
+            <div>
+              <p className={`text-sm font-bold ${color}`}>{label}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-relaxed">{desc}</p>
+            </div>
           </Link>
         ))}
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <TrendingUp size={16} />
-            공지 / 업데이트
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            흑우단 공략 사이트에 오신 것을 환영합니다. 방어팀 공략을 확인하거나 수비 기록을 남겨보세요.
-          </p>
-        </CardContent>
-      </Card>
+      {/* 하단 안내 */}
+      <div className="rounded-xl border border-border/30 bg-muted/10 px-4 py-3 text-xs text-muted-foreground text-center">
+        공격 완료 후 <span className="text-yellow-400 font-semibold">속공 계산기</span>에서 기록을 저장하면{" "}
+        <span className="text-amber-400 font-semibold">오늘의 길드전</span>에서 확인할 수 있습니다.
+      </div>
     </div>
   );
 }
