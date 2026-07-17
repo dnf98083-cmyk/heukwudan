@@ -310,6 +310,7 @@ function SpeedCalcPage() {
   const [battleOrder, setBattleOrder] = useState<OrderSlot[]>(Array(6).fill(null).map(() => ({ ...EMPTY_SLOT })));
   const [speedResult, setSpeedResult] = useState<"승" | "패">("승");
   const [analysis, setAnalysis] = useState<string | null>(null);
+  const [enemyRanges, setEnemyRanges] = useState<{ name: string; min: number; max: number; baseMax: number }[]>([]);
   const [activeSearch, setActiveSearch] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
@@ -389,12 +390,12 @@ function SpeedCalcPage() {
       if (nextEmpty === -1) return prev;
       return prev.map((s, i) => i === nextEmpty ? { name, team } : s);
     });
-    setAnalysis(null);
+    setAnalysis(null); setEnemyRanges([]);
   }
 
   function clearSlot(idx: number) {
     setBattleOrder((p) => p.map((s, i) => i === idx ? { ...EMPTY_SLOT } : s));
-    setAnalysis(null);
+    setAnalysis(null); setEnemyRanges([]);
   }
 
   // 각 팀별로 별도의 used 목록 (같은 이름이 두 팀에 가능)
@@ -415,55 +416,59 @@ function SpeedCalcPage() {
   const isAdmin = ["슈퍼개발자", "관리자"].includes(userRole);
 
   function handleAnalyze() {
-    if (enemyChips.length === 0 && allyChips.length === 0) {
-      setAnalysis("영웅을 선택해주세요."); return;
+    const filled = battleOrder.filter((s) => s.name);
+    if (filled.length === 0) { setAnalysis("전투 순서를 입력해주세요."); return; }
+
+    // ── 적군 속공 범위 유추 ───────────────────────────────────────────
+    // 전투 순서는 속공 빠른 순. 아군 속공은 알고 있으므로
+    // 바로 앞 아군 속공 → 적군 최대 상한
+    // 바로 뒤 아군 속공 → 적군 최소 하한
+    const ranges: { name: string; min: number; max: number; baseMax: number }[] = [];
+
+    for (let i = 0; i < filled.length; i++) {
+      const slot = filled[i];
+      if (slot.team !== "enemy") continue;
+
+      const chip = enemyChips.find((c) => c.name === slot.name);
+      const base = chip?.type ? (SPEED_BASE[chip.type] ?? 25) : 25;
+      const absoluteMax = base + 96;
+
+      // 이 적군 이전에 나온 가장 가까운 아군 속공 → 상한
+      // (아군이 먼저 움직였다 = 아군이 더 빠름 = 적군 ≤ 해당 아군 속공)
+      let upperBound = absoluteMax;
+      for (let j = i - 1; j >= 0; j--) {
+        if (filled[j].team === "ally") {
+          upperBound = Math.min(absoluteMax, Number(allySpeeds[filled[j].name]) || 0);
+          break;
+        }
+      }
+
+      // 이 적군 이후에 나온 가장 가까운 아군 속공 → 하한
+      // (적군이 먼저 움직였다 = 적군이 더 빠름 = 적군 ≥ 해당 아군 속공)
+      let lowerBound = 0;
+      for (let j = i + 1; j < filled.length; j++) {
+        if (filled[j].team === "ally") {
+          lowerBound = Number(allySpeeds[filled[j].name]) || 0;
+          break;
+        }
+      }
+
+      ranges.push({ name: slot.name, min: lowerBound, max: upperBound, baseMax: absoluteMax });
     }
 
-    // 전체 영웅 속공 수치 수집
-    const allEntries: { name: string; team: TeamType; speed: number }[] = [
-      ...enemyChips.map((c) => ({
-        name: c.name, team: "enemy" as TeamType,
-        speed: (c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25,
-      })),
-      ...allyChips.map((c) => ({
-        name: c.name, team: "ally" as TeamType,
-        speed: Number(allySpeeds[c.name]) || 0,
-      })),
-    ];
+    setEnemyRanges(ranges);
 
-    // 속공 수치 기준 내림차순 정렬 → 전투 순서 자동 계산
-    const sorted = [...allEntries].sort((a, b) => b.speed - a.speed);
-    const newOrder: OrderSlot[] = Array(6).fill(null).map((_, i) =>
-      sorted[i] ? { name: sorted[i].name, team: sorted[i].team } : { ...EMPTY_SLOT }
-    );
-    setBattleOrder(newOrder);
-
-    // 각 팀 최고 속공
-    const maxAlly = Math.max(0, ...allyChips.map((c) => Number(allySpeeds[c.name]) || 0));
-    const maxEnemy = Math.max(0, ...enemyChips.map((c) => (c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25));
-    const firstHero = sorted[0];
-
-    let msg = "";
-    if (!firstHero) { setAnalysis("영웅을 선택해주세요."); return; }
-
-    if (firstHero.team === "ally") {
-      msg = `✅ 아군 속공 선행! 아군 최고 ${maxAlly} > 적군 최고 ${maxEnemy}`;
+    if (ranges.length > 0) {
+      const totalMin = ranges.reduce((s, r) => s + r.min, 0);
+      const totalMax = ranges.reduce((s, r) => s + r.max, 0);
+      setAnalysis(`상대 합산 속공 추정: ${totalMin} ~ ${totalMax}`);
     } else {
-      msg = `📌 적군 속공 선행. 적군 최고 ${maxEnemy} > 아군 최고 ${maxAlly}`;
+      // 적군이 없고 아군만 있는 경우
+      const allySum = filled
+        .filter((s) => s.team === "ally")
+        .reduce((s, slot) => s + (Number(allySpeeds[slot.name]) || 0), 0);
+      setAnalysis(`아군 합산 속공: ${allySum}`);
     }
-
-    // 아군이 연속으로 몇 번 먼저 공격하는지
-    const firstEnemyInSorted = sorted.findIndex((h) => h.team === "enemy");
-    const firstAllyInSorted = sorted.findIndex((h) => h.team === "ally");
-    if (firstAllyInSorted !== -1 && (firstEnemyInSorted === -1 || firstAllyInSorted < firstEnemyInSorted)) {
-      const allyBeforeEnemy = firstEnemyInSorted === -1 ? sorted.filter(h => h.team === "ally").length : firstEnemyInSorted;
-      msg += ` (아군 ${allyBeforeEnemy}번 선공)`;
-    } else if (firstEnemyInSorted !== -1 && (firstAllyInSorted === -1 || firstEnemyInSorted < firstAllyInSorted)) {
-      const enemyBeforeAlly = firstAllyInSorted === -1 ? sorted.filter(h => h.team === "enemy").length : firstAllyInSorted;
-      msg += ` (적군 ${enemyBeforeAlly}번 선공)`;
-    }
-
-    setAnalysis(msg);
   }
 
   async function handleSave() {
@@ -661,16 +666,38 @@ function SpeedCalcPage() {
           </div>
         </div>
 
-        {/* 분석 결과 */}
+        {/* 분석 결과 — 적군 속공 범위 유추 */}
         {analysis && (
-          <div className={cn(
-            "mx-4 my-2 rounded-xl px-3 py-2.5 text-sm font-semibold border",
-            analysis.startsWith("✅") ? "bg-green-500/10 border-green-500/30 text-green-400" :
-            analysis.startsWith("📌") ? "bg-red-500/10 border-red-500/30 text-red-400" :
-            analysis.startsWith("⚠️") ? "bg-yellow-500/10 border-yellow-500/30 text-yellow-400" :
-            "bg-muted/30 border-border text-muted-foreground"
-          )}>
-            {analysis}
+          <div className="mx-4 my-2 space-y-2">
+            {/* 요약 */}
+            <div className="rounded-xl px-3 py-2.5 text-sm font-bold border bg-red-500/10 border-red-500/30 text-red-300">
+              🔍 {analysis}
+            </div>
+
+            {/* 영웅별 범위 */}
+            {enemyRanges.length > 0 && (
+              <div className="rounded-xl border border-border/40 overflow-hidden text-xs">
+                <div className="px-3 py-1.5 bg-red-950/30 border-b border-border/30 flex items-center justify-between">
+                  <span className="font-semibold text-red-400">적군 영웅별 속공 유추</span>
+                  <span className="text-muted-foreground/60">기본속공 + 96 = 최대</span>
+                </div>
+                {enemyRanges.map((r) => (
+                  <div key={r.name} className="flex items-center gap-2 px-3 py-2 border-b border-border/20 last:border-0">
+                    <span className="font-medium flex-1">{r.name}</span>
+                    <span className="text-muted-foreground">최대 {r.baseMax}</span>
+                    <span className="font-bold text-red-300 bg-red-900/20 px-2 py-0.5 rounded-full">
+                      {r.min === 0 ? `≤ ${r.max}` : r.min === r.max ? `≈ ${r.min}` : `${r.min} ~ ${r.max}`}
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between px-3 py-2 bg-muted/10">
+                  <span className="font-semibold">합산</span>
+                  <span className="font-bold text-red-300 text-sm">
+                    {enemyRanges.reduce((s, r) => s + r.min, 0)} ~ {enemyRanges.reduce((s, r) => s + r.max, 0)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
