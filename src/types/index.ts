@@ -40,6 +40,7 @@ export interface DefenseStrategy {
   main_option: string | null;
   stats: string | null;
   note: string | null;
+  skill_order: string | null;
   memo: string | null;
   created_at: string;
 }

@@ -196,10 +196,13 @@ function StrategyCard({ strategy: s, onRefresh }: { strategy: DefenseStrategy; o
   }
 
   return (
-    <div className="rounded-lg border border-border/60 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-primary">{s.strategy_num}안</span>
-        <div className="flex items-center gap-1">
+    <div className="rounded-lg border border-border/60 p-4 space-y-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-sm font-black text-primary">{s.strategy_num}안</span>
+          {s.note && <span className="ml-2 text-sm font-semibold text-foreground">{s.note}</span>}
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
           <button onClick={() => setEditOpen(true)} className="rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors">
             <Pencil size={13} />
           </button>
@@ -208,14 +211,33 @@ function StrategyCard({ strategy: s, onRefresh }: { strategy: DefenseStrategy; o
           </button>
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 text-sm">
-        <InfoItem label="장비" value={s.equipment} />
-        <InfoItem label="메인옵" value={s.main_option} />
-        <InfoItem label="스탯" value={s.stats} />
-        <InfoItem label="특이사항" value={s.note} />
-      </div>
+
+      {(s.main_option || s.stats) && (
+        <div className="flex gap-4 text-sm">
+          {s.main_option && <InfoItem label="반지 추천" value={s.main_option} />}
+          {s.stats && <InfoItem label="속공" value={s.stats} />}
+        </div>
+      )}
+
+      {s.skill_order && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-0.5">스킬순서</p>
+          <p className="text-sm whitespace-pre-line leading-relaxed">{s.skill_order}</p>
+        </div>
+      )}
+
+      {s.equipment && (
+        <div>
+          <p className="text-xs text-muted-foreground mb-0.5">장비 세팅</p>
+          <p className="text-sm whitespace-pre-line leading-relaxed">{s.equipment}</p>
+        </div>
+      )}
+
       {s.memo && (
-        <p className="text-xs text-muted-foreground border-t border-border/40 pt-2">📝 {s.memo}</p>
+        <div className="border-t border-border/40 pt-2">
+          <p className="text-xs text-muted-foreground mb-0.5">조건/설명/팁</p>
+          <p className="text-sm whitespace-pre-line leading-relaxed text-muted-foreground">{s.memo}</p>
+        </div>
       )}
 
       <EditStrategyDialog
@@ -410,12 +432,25 @@ function EditTeamDialog({
 
 // ────────────────────────────────────────────────
 // 공략 안 추가 / 수정 공통 폼
+// 필드: 케이스이름(note), 반지추천(main_option), 속공(stats),
+//       스킬순서(skill_order), 장비세팅(equipment), 조건/설명/팁(memo)
 // ────────────────────────────────────────────────
-type StrategyForm = { equipment: string; main_option: string; stats: string; note: string; memo: string };
-const EMPTY_FORM: StrategyForm = { equipment: "", main_option: "", stats: "", note: "", memo: "" };
-const FIELD_LABELS: Record<keyof StrategyForm, string> = {
-  equipment: "장비", main_option: "메인옵", stats: "스탯", note: "특이사항", memo: "메모",
+type StrategyForm = {
+  case_name: string;   // → note
+  ring_rec: string;    // → main_option
+  speed: string;       // → stats
+  skill_order: string; // → skill_order
+  equipment: string;   // → equipment
+  conditions: string;  // → memo
 };
+const EMPTY_FORM: StrategyForm = {
+  case_name: "", ring_rec: "", speed: "", skill_order: "", equipment: "", conditions: "",
+};
+
+const TEXT_AREA_CLS = cn(
+  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
+  "resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring placeholder:text-muted-foreground"
+);
 
 function StrategyFormDialog({
   open, title, initialForm, onClose, onSave,
@@ -429,8 +464,11 @@ function StrategyFormDialog({
   const [form, setForm] = useState(initialForm);
   const [saving, setSaving] = useState(false);
 
-  const set = (key: keyof StrategyForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((p) => ({ ...p, [key]: e.target.value }));
+  useEffect(() => { if (open) setForm(initialForm); }, [open]);
+
+  const set = (key: keyof StrategyForm) =>
+    (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setForm((p) => ({ ...p, [key]: e.target.value }));
 
   async function handleSave() {
     setSaving(true);
@@ -440,31 +478,60 @@ function StrategyFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-sm">
-        <div className="space-y-4">
+      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+        <div className="space-y-3">
           <h2 className="text-lg font-bold">{title}</h2>
-          <div className="grid grid-cols-2 gap-3">
-            {(["equipment", "main_option", "stats", "note"] as const).map((key) => (
-              <div key={key} className="space-y-1">
-                <label className="text-xs text-muted-foreground">{FIELD_LABELS[key]}</label>
-                <Input value={form[key]} onChange={set(key)} />
-              </div>
-            ))}
-          </div>
+
           <div className="space-y-1">
-            <label className="text-xs text-muted-foreground">메모</label>
+            <label className="text-xs text-muted-foreground">케이스 이름</label>
+            <Input value={form.case_name} onChange={set("case_name")} placeholder="예) 조건1 - 전부 6초 이상" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">반지 추천</label>
+              <Input value={form.ring_rec} onChange={set("ring_rec")} placeholder="예) 공격반지" />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">속공</label>
+              <Input value={form.speed} onChange={set("speed")} placeholder="예) 130~170" />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">스킬순서</label>
             <textarea
-              value={form.memo}
-              onChange={set("memo")}
-              rows={2}
-              className={cn(
-                "w-full rounded-md border border-input bg-background px-3 py-2 text-sm",
-                "resize-none focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              )}
-              placeholder="추가 메모..."
+              value={form.skill_order}
+              onChange={set("skill_order")}
+              rows={3}
+              className={TEXT_AREA_CLS}
+              placeholder="예) 1. 여포1 파이2 여포2"
             />
           </div>
-          <div className="flex gap-2">
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">장비 세팅</label>
+            <textarea
+              value={form.equipment}
+              onChange={set("equipment")}
+              rows={2}
+              className={TEXT_AREA_CLS}
+              placeholder="예) 전부 추적자 or 암살자 내실세팅"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">조건/설명/팁</label>
+            <textarea
+              value={form.conditions}
+              onChange={set("conditions")}
+              rows={3}
+              className={TEXT_AREA_CLS}
+              placeholder="추가 조건이나 주의사항..."
+            />
+          </div>
+
+          <div className="flex gap-2 pt-1">
             <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
             <Button className="flex-1" onClick={handleSave} disabled={saving}>{saving ? "저장 중..." : "저장"}</Button>
           </div>
@@ -489,7 +556,12 @@ function AddStrategyDialog({
         const { error } = await createClient().from("defense_strategies").insert({
           team_id: teamId,
           strategy_num: nextNum,
-          ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v || null])),
+          note: form.case_name || null,
+          main_option: form.ring_rec || null,
+          stats: form.speed || null,
+          skill_order: form.skill_order || null,
+          equipment: form.equipment || null,
+          memo: form.conditions || null,
         });
         if (!error) onSaved();
       }}
@@ -507,16 +579,22 @@ function EditStrategyDialog({
       open={open}
       title={`${s.strategy_num}안 수정`}
       initialForm={{
+        case_name: s.note ?? "",
+        ring_rec: s.main_option ?? "",
+        speed: s.stats ?? "",
+        skill_order: s.skill_order ?? "",
         equipment: s.equipment ?? "",
-        main_option: s.main_option ?? "",
-        stats: s.stats ?? "",
-        note: s.note ?? "",
-        memo: s.memo ?? "",
+        conditions: s.memo ?? "",
       }}
       onClose={onClose}
       onSave={async (form) => {
         const { error } = await createClient().from("defense_strategies").update({
-          ...Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v || null])),
+          note: form.case_name || null,
+          main_option: form.ring_rec || null,
+          stats: form.speed || null,
+          skill_order: form.skill_order || null,
+          equipment: form.equipment || null,
+          memo: form.conditions || null,
         }).eq("id", s.id);
         if (!error) onSaved();
       }}

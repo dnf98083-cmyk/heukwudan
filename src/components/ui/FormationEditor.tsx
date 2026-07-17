@@ -9,6 +9,55 @@ import { searchHeroes } from "@/lib/hero-search";
 import { TYPE_STYLE } from "@/lib/constants";
 import type { FormationType, HeroType } from "@/types";
 
+// 펫 슬롯 — 자유 텍스트 입력
+function PetInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  return (
+    <div
+      className={cn(
+        "rounded-lg border-2 min-h-[68px] flex flex-col items-center justify-center transition-colors relative px-1",
+        value ? "border-purple-700/60 bg-purple-950/30" : "border-border/40 bg-muted/10"
+      )}
+    >
+      {editing ? (
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => { onChange(draft); setEditing(false); }}
+          onKeyDown={(e) => { if (e.key === "Enter") { onChange(draft); setEditing(false); } }}
+          className="w-full text-center text-xs bg-transparent focus:outline-none"
+          placeholder="펫 이름"
+        />
+      ) : value ? (
+        <>
+          <p
+            className="text-[11px] font-bold text-center leading-tight px-0.5 break-words max-w-full cursor-pointer"
+            onClick={() => { setDraft(value); setEditing(true); }}
+          >
+            {value}
+          </p>
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="mt-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X size={10} />
+          </button>
+        </>
+      ) : (
+        <p
+          className="text-[10px] text-muted-foreground cursor-pointer"
+          onClick={() => { setDraft(""); setEditing(true); }}
+        >
+          비어있음
+        </p>
+      )}
+    </div>
+  );
+}
+
 // pos(1-5) → hero name 매핑
 export type SlotMap = Record<number, string>;
 
@@ -66,26 +115,35 @@ export function FormationEditor({ formationType, onFormationTypeChange, slots, o
 
   return (
     <div className="space-y-3">
-      {/* 앞줄 */}
-      <div className="space-y-1">
-        <p className="text-[11px] font-semibold text-center text-muted-foreground tracking-widest">▲ 앞줄</p>
-        <div
-          className="grid gap-2 mx-auto"
-          style={{
-            gridTemplateColumns: `repeat(${front.length}, 1fr)`,
-            maxWidth: front.length === 1 ? "90px" : "100%",
-          }}
-        >
-          {front.map((pos) => (
-            <SlotInput
-              key={pos}
-              pos={pos}
-              value={slots[pos] ?? ""}
-              heroes={displayHeroes}
-              usedNames={usedNames}
-              onChange={(name) => setSlot(pos, name)}
-            />
-          ))}
+      {/* 앞줄 + 펫 */}
+      <div className="flex items-start gap-2">
+        <div className="flex-1 space-y-1">
+          <p className="text-[11px] font-semibold text-center text-muted-foreground tracking-widest">▲ 앞줄</p>
+          <div
+            className="grid gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${front.length}, 1fr)`,
+            }}
+          >
+            {front.map((pos) => (
+              <SlotInput
+                key={pos}
+                pos={pos}
+                value={slots[pos] ?? ""}
+                heroes={displayHeroes}
+                usedNames={usedNames}
+                onChange={(name) => setSlot(pos, name)}
+              />
+            ))}
+          </div>
+        </div>
+        {/* 펫 슬롯 (pos=6) */}
+        <div className="shrink-0 w-[70px] space-y-1">
+          <p className="text-[11px] font-semibold text-center text-purple-400 tracking-widest">펫</p>
+          <PetInput
+            value={slots[6] ?? ""}
+            onChange={(name) => onSlotsChange({ ...slots, 6: name })}
+          />
         </div>
       </div>
 
@@ -168,7 +226,18 @@ export function FormationPreview({
   return (
     <div className="space-y-1.5 rounded-lg bg-muted/10 border border-border p-3">
       <p className="text-[10px] text-center text-muted-foreground">▲ 앞줄</p>
-      <Row positions={front} />
+      <div className="flex items-center justify-center gap-2">
+        <Row positions={front} />
+        {/* 펫 슬롯 */}
+        <div className="flex flex-col items-center gap-0.5 shrink-0">
+          <p className="text-[9px] text-purple-400 font-semibold">펫</p>
+          <div className="rounded-lg border border-purple-700/40 bg-purple-950/20 w-[56px] h-11 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-center px-1 leading-tight break-words">
+              {slotMap[6] || <span className="text-muted-foreground">—</span>}
+            </span>
+          </div>
+        </div>
+      </div>
       <p className="text-[10px] text-center text-muted-foreground">▼ 뒷줄</p>
       <Row positions={back} />
     </div>
