@@ -18,8 +18,10 @@ import type { UserRole } from "@/lib/session";
 
 const EDIT_ROLES: UserRole[] = ["슈퍼개발자", "관리자", "연구원"];
 
+interface EnemyTeam { id: string; title: string; hero_names: string[] }
+
 interface Props {
-  initialTeams: { id: string; title: string }[];
+  initialTeams: EnemyTeam[];
   playerNickname: string;
   userRole: UserRole | undefined;
 }
@@ -55,7 +57,7 @@ function sortDecks(decks: AttackDeck[], key: SortKey) {
 
 export default function AttackClient({ initialTeams, playerNickname, userRole }: Props) {
   const canEdit = !!userRole && EDIT_ROLES.includes(userRole);
-  const [teams, setTeams] = useState(initialTeams);
+  const [teams, setTeams] = useState<EnemyTeam[]>(initialTeams);
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -70,13 +72,19 @@ export default function AttackClient({ initialTeams, playerNickname, userRole }:
   const filteredTeams = teams.filter((t) => t.title.includes(search));
   const selectedTeam = teams.find((t) => t.id === selectedTeamId);
 
+  // ?team= URL 파라미터로 방어팀 자동 선택
+  useEffect(() => {
+    const team = new URLSearchParams(window.location.search).get("team");
+    if (team) setSelectedTeamId(team);
+  }, []);
+
   async function refreshTeams() {
     const { data } = await createClient()
       .from("defense_teams")
-      .select("id, title")
+      .select("id, title, hero_names")
       .eq("team_type", "enemy")
       .order("display_order");
-    setTeams(data ?? []);
+    setTeams((data ?? []) as EnemyTeam[]);
   }
 
   async function loadDecks(teamId: string) {
@@ -285,7 +293,13 @@ export default function AttackClient({ initialTeams, playerNickname, userRole }:
       )}
 
       {/* 다이얼로그들 */}
-      <DeckDialog deck={selectedDeck} onClose={() => setSelectedDeck(null)} onRecord={recordResult} playerNickname={playerNickname} />
+      <DeckDialog
+        deck={selectedDeck}
+        onClose={() => setSelectedDeck(null)}
+        onRecord={recordResult}
+        playerNickname={playerNickname}
+        enemyHeroNames={teams.find((t) => t.id === selectedTeamId)?.hero_names ?? []}
+      />
 
       <AddEnemyTeamDialog
         open={addEnemyOpen}
@@ -518,19 +532,19 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-// 성 목록 — 실제 길드전 구조에 맞게 수정 가능
-const CASTLE_TYPES = ["외성 1", "외성 2", "외성 3", "내성", "본성"];
+const CASTLE_TYPES = ["외성 1", "외성 2", "외성 3", "외성 4", "외성 5", "내성 1", "내성 2", "내성 3", "본성"];
 
 // ────────────────────────────────────────────────
 // 덱 상세 다이얼로그 (승/패 기록)
 // ────────────────────────────────────────────────
 function DeckDialog({
-  deck, onClose, onRecord, playerNickname,
+  deck, onClose, onRecord, playerNickname, enemyHeroNames,
 }: {
   deck: AttackDeck | null;
   onClose: () => void;
   onRecord: (deckId: string, result: "승" | "패") => Promise<void>;
   playerNickname: string;
+  enemyHeroNames: string[];
 }) {
   const router = useRouter();
   const [recording, setRecording] = useState(false);
@@ -587,9 +601,20 @@ function DeckDialog({
   }
 
   async function handleSpeedCalc() {
+    if (!deck) return;
     await saveDefeatInfo();
+    const allyHeroes = (deck.formation_slots ?? []).map((s) => s.name).filter(Boolean);
+    const params = new URLSearchParams({
+      enemy: enemyHeroNames.join(","),
+      ally: allyHeroes.join(","),
+      castle: castleType,
+      opponent: opponentName.trim(),
+      deckId: deck.id,
+      teamId: deck.defense_team_id ?? "",
+      playerName: playerNickname,
+    });
     handleClose();
-    router.push("/speed-calc");
+    router.push(`/speed-calc?${params.toString()}`);
   }
 
   if (!deck) return null;

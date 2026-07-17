@@ -40,9 +40,10 @@ interface Props {
   onFormationTypeChange: (type: FormationType) => void;
   slots: SlotMap;
   onSlotsChange: (slots: SlotMap) => void;
+  allowedHeroes?: string[];
 }
 
-export function FormationEditor({ formationType, onFormationTypeChange, slots, onSlotsChange }: Props) {
+export function FormationEditor({ formationType, onFormationTypeChange, slots, onSlotsChange, allowedHeroes }: Props) {
   const [heroes, setHeroes] = useState<{ id: string; name: string; type: HeroType | null }[]>([]);
 
   useEffect(() => {
@@ -55,6 +56,9 @@ export function FormationEditor({ formationType, onFormationTypeChange, slots, o
 
   const { front, back } = LAYOUT[formationType];
   const usedNames = Object.values(slots).filter(Boolean);
+  const displayHeroes = allowedHeroes
+    ? heroes.filter((h) => allowedHeroes.includes(h.name))
+    : heroes;
 
   function setSlot(pos: number, name: string) {
     onSlotsChange({ ...slots, [pos]: name });
@@ -77,7 +81,7 @@ export function FormationEditor({ formationType, onFormationTypeChange, slots, o
               key={pos}
               pos={pos}
               value={slots[pos] ?? ""}
-              heroes={heroes}
+              heroes={displayHeroes}
               usedNames={usedNames}
               onChange={(name) => setSlot(pos, name)}
             />
@@ -97,7 +101,7 @@ export function FormationEditor({ formationType, onFormationTypeChange, slots, o
               key={pos}
               pos={pos}
               value={slots[pos] ?? ""}
-              heroes={heroes}
+              heroes={displayHeroes}
               usedNames={usedNames}
               onChange={(name) => setSlot(pos, name)}
             />

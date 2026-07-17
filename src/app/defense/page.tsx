@@ -256,6 +256,7 @@ function AddTeamDialog({
   function reset() { setTitle(""); setHeroes([]); setIsAutoTitle(true); setFormationType("기본"); setSlotMap({}); setError(""); }
 
   function handleAdd(name: string) {
+    if (heroes.length >= 3) return;
     const next = [...heroes, name];
     setHeroes(next);
     if (isAutoTitle) setTitle(next.join(" "));
@@ -265,6 +266,13 @@ function AddTeamDialog({
     const next = heroes.filter((h) => h !== name);
     setHeroes(next);
     if (isAutoTitle) setTitle(next.join(" "));
+    setSlotMap((prev) => {
+      const updated = { ...prev };
+      for (const pos of Object.keys(updated)) {
+        if (updated[Number(pos)] === name) delete updated[Number(pos)];
+      }
+      return updated;
+    });
   }
 
   async function handleSave() {
@@ -293,20 +301,22 @@ function AddTeamDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">영웅 선택 *</label>
+            <label className="text-xs text-muted-foreground">영웅 선택 * (최대 3명)</label>
             <HeroPicker
               selected={heroes}
               onAdd={handleAdd}
               onRemove={handleRemove}
+              maxCount={3}
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">진형 설정</label>
+            <label className="text-xs text-muted-foreground">진형 설정 (선택한 영웅만 배치 가능)</label>
             <FormationEditor
               formationType={formationType}
               onFormationTypeChange={setFormationType}
               slots={slotMap}
               onSlotsChange={setSlotMap}
+              allowedHeroes={heroes}
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
@@ -335,6 +345,17 @@ function EditTeamDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
+  function handleEditRemove(name: string) {
+    setHeroes((p) => p.filter((h) => h !== name));
+    setSlotMap((prev) => {
+      const updated = { ...prev };
+      for (const pos of Object.keys(updated)) {
+        if (updated[Number(pos)] === name) delete updated[Number(pos)];
+      }
+      return updated;
+    });
+  }
+
   async function handleSave() {
     if (!title.trim()) { setError("팀 이름을 입력하세요."); return; }
     if (heroes.length === 0) { setError("영웅을 최소 1명 선택하세요."); return; }
@@ -358,20 +379,22 @@ function EditTeamDialog({
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">영웅 선택 *</label>
+            <label className="text-xs text-muted-foreground">영웅 선택 * (최대 3명)</label>
             <HeroPicker
               selected={heroes}
-              onAdd={(name) => setHeroes((p) => [...p, name])}
-              onRemove={(name) => setHeroes((p) => p.filter((h) => h !== name))}
+              onAdd={(name) => { if (heroes.length < 3) setHeroes((p) => [...p, name]); }}
+              onRemove={handleEditRemove}
+              maxCount={3}
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs text-muted-foreground">진형 설정</label>
+            <label className="text-xs text-muted-foreground">진형 설정 (선택한 영웅만 배치 가능)</label>
             <FormationEditor
               formationType={formationType}
               onFormationTypeChange={setFormationType}
               slots={slotMap}
               onSlotsChange={setSlotMap}
+              allowedHeroes={heroes}
             />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
