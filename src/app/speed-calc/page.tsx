@@ -246,34 +246,33 @@ function SpeedRecordCard({ record: r, isAdmin, onDelete }: {
 }
 
 // ── 칩 아이템 (모듈 스코프 — 리렌더 시 언마운트 방지) ──────────────────────
+// 이름 버튼(전투순서 추가)과 X 버튼(칩 제거)을 완전히 분리된 형제 요소로 구성
 
-function ChipItem({ chip, team, colorBase, placed, onFill, onRemove }: {
-  chip: Chip;
-  team: TeamType;
-  colorBase: string;
-  placed: boolean;
-  onFill: () => void;
-  onRemove: () => void;
+function ChipItem({ chip, colorBase, placed, onFill, onRemove }: {
+  chip: Chip; colorBase: string; placed: boolean; onFill: () => void; onRemove: () => void;
 }) {
   const ts = chip.type ? TYPE_STYLE[chip.type] : null;
+  const baseClass = ts ? ts.className : colorBase;
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold border cursor-pointer select-none transition-opacity",
-        ts ? ts.className : colorBase,
-        placed ? "opacity-100" : "opacity-60"
-      )}
-      onClick={onFill}
-    >
-      <span className="text-[10px] mr-0.5">{placed ? "✓" : "●"}</span>
-      {chip.name}
+    <div className={cn("inline-flex items-center rounded-full border overflow-hidden", baseClass, placed ? "opacity-100" : "opacity-50")}>
+      {/* 이름 클릭 → 전투 순서에 추가 */}
       <button
-        onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        className="ml-0.5 hover:opacity-60 transition-opacity"
+        type="button"
+        onClick={onFill}
+        className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold"
       >
-        <X size={9} />
+        <span className="text-[10px]">{placed ? "✓" : "●"}</span>
+        {chip.name}
       </button>
-    </span>
+      {/* X 클릭 → 칩 제거 (이름 버튼과 완전히 분리) */}
+      <button
+        type="button"
+        onClick={onRemove}
+        className="pr-2 pl-0.5 py-1 opacity-50 hover:opacity-100 transition-opacity"
+      >
+        <X size={10} />
+      </button>
+    </div>
   );
 }
 
@@ -533,7 +532,6 @@ function SpeedCalcPage() {
               <ChipItem
                 key={c.name}
                 chip={c}
-                team="enemy"
                 colorBase="bg-red-900/40 text-red-300 border-red-700/40"
                 placed={placedSet.has(`enemy:${c.name}`)}
                 onFill={() => fillNextSlot(c.name, "enemy")}
@@ -560,7 +558,6 @@ function SpeedCalcPage() {
               <ChipItem
                 key={c.name}
                 chip={c}
-                team="ally"
                 colorBase="bg-blue-900/40 text-blue-300 border-blue-700/40"
                 placed={placedSet.has(`ally:${c.name}`)}
                 onFill={() => fillNextSlot(c.name, "ally")}
@@ -590,7 +587,6 @@ function SpeedCalcPage() {
                   <ChipItem
                     key={c.name}
                     chip={c}
-                    team="other"
                     colorBase="bg-muted text-muted-foreground border-border/40"
                     placed={placedSet.has(`other:${c.name}`)}
                     onFill={() => fillNextSlot(c.name, "other")}
