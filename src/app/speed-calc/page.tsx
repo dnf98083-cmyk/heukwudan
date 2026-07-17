@@ -499,7 +499,10 @@ function SpeedCalcPage() {
     });
     setSaving(false);
     if (res.ok) { setSaveMsg("✅ 저장되었습니다."); await fetchRecords(); }
-    else setSaveMsg("❌ 저장 실패. 다시 시도해주세요.");
+    else {
+      const errData = await res.json().catch(() => ({}));
+      setSaveMsg(`❌ ${errData.error ?? "저장 실패"}`);
+    }
   }
 
   async function handleDeleteRecord(id: string) {
