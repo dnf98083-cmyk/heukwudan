@@ -487,9 +487,11 @@ function SpeedCalcPage() {
         ally_heroes: allyChips.map((c) => c.name),
         deck_id: paramDeckId || null,
         defense_team_id: paramTeamId || null,
+        result: speedResult,
         battle_order: battleOrder.filter((s) => s.name).map((s) => `${s.team}:${s.name}`),
         ally_speeds: allySpeedsNum,
         enemy_speeds: enemySpeedMap,
+        enemy_speed_ranges: enemyRanges.length > 0 ? enemyRanges.map((r) => ({ name: r.name, min: r.min, max: r.max })) : null,
         ally_total: allyChips.reduce((s, c) => s + (Number(allySpeeds[c.name]) || 0), 0),
         enemy_total: enemyChips.reduce((s, c) => s + ((c.type && SPEED_BASE[c.type]) ? SPEED_BASE[c.type] : 25), 0),
         recorder_name: playerName.trim(),
@@ -746,27 +748,6 @@ function SpeedCalcPage() {
         </div>
       </div>
 
-      {/* 속공 기록 목록 */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-bold">📋 속공 기록</p>
-          {isAdmin && records.length > 0 && (
-            <button
-              onClick={handleResetAll}
-              className="text-xs text-red-400 hover:text-red-300 border border-red-500/40 rounded-lg px-2.5 py-1 hover:bg-red-500/10 transition-colors flex items-center gap-1"
-            >
-              <Trash2 size={11} />전체 초기화
-            </button>
-          )}
-        </div>
-        {records.length === 0 ? (
-          <p className="text-center text-sm text-muted-foreground py-8">기록이 없습니다.</p>
-        ) : (
-          records.map((r) => (
-            <SpeedRecordCard key={r.id} record={r} isAdmin={isAdmin} onDelete={handleDeleteRecord} />
-          ))
-        )}
-      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Trophy, Swords, Shield, RefreshCw, Calendar, Trash2 } from "lucide-react";
+import { Trophy, Swords, Shield, RefreshCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -72,58 +72,6 @@ function RankTable({ ranks }: { ranks: Rank[] }) {
   );
 }
 
-function TodayTab({ records }: { records: AttackRecord[] }) {
-  const today = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
-  const todayRecords = records.filter((r) => {
-    const d = new Date(r.recorded_at).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
-    return d === today;
-  });
-
-  if (todayRecords.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-2 text-muted-foreground">
-        <Calendar size={32} className="opacity-30" />
-        <p className="text-sm">오늘 기록된 공격이 없습니다.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground px-1">
-        오늘 총 <span className="text-foreground font-semibold">{todayRecords.length}</span>번 공격
-        &nbsp;·&nbsp;
-        <span className="text-blue-400 font-semibold">{todayRecords.filter((r) => r.result === "승").length}승</span>
-        &nbsp;
-        <span className="text-red-400 font-semibold">{todayRecords.filter((r) => r.result === "패").length}패</span>
-      </p>
-      {todayRecords.map((r) => (
-        <div key={r.id} className="flex items-start gap-3 px-4 py-3 rounded-lg border border-border/40 bg-card text-sm">
-          <Badge
-            variant="outline"
-            className={r.result === "승" ? "border-blue-500 text-blue-400 shrink-0" : "border-red-500 text-red-400 shrink-0"}
-          >
-            {r.result}
-          </Badge>
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold">{r.player_name}</p>
-            <p className="text-xs text-muted-foreground truncate">{r.attack_decks?.name ?? "삭제된 덱"}</p>
-            {(r.castle_type || r.opponent_name) && (
-              <p className="text-xs text-amber-400 mt-0.5">
-                {r.castle_type && `🏰 ${r.castle_type}`}
-                {r.castle_type && r.opponent_name && " · "}
-                {r.opponent_name && `🎭 ${r.opponent_name}`}
-              </p>
-            )}
-          </div>
-          <span className="text-xs text-muted-foreground shrink-0">
-            {new Date(r.recorded_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function RecordsClient({ isAdmin }: { isAdmin: boolean }) {
   const [attackRecords, setAttackRecords] = useState<AttackRecord[]>([]);
@@ -189,17 +137,11 @@ export default function RecordsClient({ isAdmin }: { isAdmin: boolean }) {
       {loading ? (
         <p className="text-center text-muted-foreground text-sm py-12">불러오는 중...</p>
       ) : (
-        <Tabs defaultValue="today">
-          <TabsList className="w-full grid grid-cols-3">
-            <TabsTrigger value="today" className="gap-1.5"><Calendar size={13} />오늘의 길드전</TabsTrigger>
+        <Tabs defaultValue="attack">
+          <TabsList className="w-full grid grid-cols-2">
             <TabsTrigger value="attack" className="gap-1.5"><Swords size={13} />공격 랭킹</TabsTrigger>
             <TabsTrigger value="defense" className="gap-1.5"><Shield size={13} />수비 랭킹</TabsTrigger>
           </TabsList>
-
-          {/* ── 오늘의 길드전 ── */}
-          <TabsContent value="today" className="mt-4">
-            <TodayTab records={attackRecords} />
-          </TabsContent>
 
           {/* ── 공격 랭킹 ── */}
           <TabsContent value="attack" className="mt-4 space-y-5">
