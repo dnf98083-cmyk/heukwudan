@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
+import BottomNav from "@/components/layout/BottomNav";
 import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { sessionOptions, type SessionData } from "@/lib/session";
@@ -25,10 +26,14 @@ export default async function RootLayout({
     <html lang="ko" className={`${geist.variable} dark h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <Navbar user={user} />
-        <main className="flex-1 container mx-auto px-4 py-6">{children}</main>
-        <footer className="border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
+        {/* 모바일에서는 하단 탭바 높이(56px)만큼 여백 추가 */}
+        <main className="flex-1 container mx-auto px-4 py-6 pb-20 md:pb-6">
+          {children}
+        </main>
+        <footer className="hidden md:block border-t border-border/40 py-4 text-center text-xs text-muted-foreground">
           흑우단 공략 © 2026
         </footer>
+        <BottomNav user={user} />
       </body>
     </html>
   );

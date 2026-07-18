@@ -9,13 +9,13 @@ import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/session";
 
 const navItems: { href: string; label: string; icon: React.ElementType; minRole?: UserRole }[] = [
-  { href: "/attack", label: "길드전", icon: Swords },
-  { href: "/guild-war", label: "오늘의 길드전", icon: Calendar },
-  { href: "/defense", label: "방어팀 공략", icon: Shield },
-  { href: "/speed-calc", label: "속공 계산기", icon: Zap },
-  { href: "/records", label: "랭킹", icon: Trophy },
-  { href: "/pve", label: "PVE 공략", icon: Castle },
-  { href: "/heroes", label: "영웅 도감", icon: BookOpen, minRole: "연구원" },
+  { href: "/attack",     label: "길드전",        icon: Swords },
+  { href: "/guild-war",  label: "오늘의 길드전", icon: Calendar },
+  { href: "/defense",    label: "방어팀 공략",   icon: Shield },
+  { href: "/speed-calc", label: "속공 계산기",   icon: Zap },
+  { href: "/records",    label: "랭킹",          icon: Trophy },
+  { href: "/pve",        label: "PVE 공략",      icon: Castle },
+  { href: "/heroes",     label: "영웅 도감",     icon: BookOpen, minRole: "연구원" },
 ];
 
 const ROLE_LEVEL: Record<UserRole, number> = {
@@ -23,7 +23,7 @@ const ROLE_LEVEL: Record<UserRole, number> = {
 };
 
 const ROLE_BADGE: Record<UserRole, { label: string; className: string } | null> = {
-  슈퍼개발자: null, // 슈퍼개발자는 배지 숨김
+  슈퍼개발자: null,
   관리자: { label: "관리자", className: "bg-amber-500/20 text-amber-400" },
   연구원: { label: "연구원", className: "bg-blue-500/20 text-blue-400" },
   길드원: { label: "길드원", className: "bg-muted text-muted-foreground" },
@@ -46,11 +46,13 @@ export default function Navbar({ user }: NavbarProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <div className="container mx-auto flex h-14 items-center px-4">
-        <Link href="/" className="mr-6 flex items-center gap-2 font-bold">
-          <span className="text-lg">⚔️ 흑우단 공략</span>
+        {/* 로고 */}
+        <Link href="/" className="flex items-center gap-2 font-bold shrink-0">
+          <span className="text-base md:text-lg">⚔️ <span className="hidden sm:inline">흑우단 공략</span><span className="sm:hidden">흑우단</span></span>
         </Link>
 
-        <nav className="flex flex-1 items-center gap-1">
+        {/* 데스크탑 네비게이션 */}
+        <nav className="hidden md:flex flex-1 items-center gap-1 ml-6">
           {navItems
             .filter(({ minRole }) => {
               if (!minRole) return true;
@@ -88,7 +90,8 @@ export default function Navbar({ user }: NavbarProps) {
           )}
         </nav>
 
-        <div className="flex items-center gap-2">
+        {/* 데스크탑 유저 영역 */}
+        <div className="hidden md:flex items-center gap-2 ml-auto">
           {user ? (
             <>
               <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -108,9 +111,27 @@ export default function Navbar({ user }: NavbarProps) {
           ) : (
             <Link
               href="/login"
-              className="inline-flex h-7 items-center gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
               <LogIn size={14} />
+              로그인
+            </Link>
+          )}
+        </div>
+
+        {/* 모바일 유저 표시 (오른쪽, 하단탭바 보완) */}
+        <div className="flex md:hidden items-center gap-2 ml-auto">
+          {user ? (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <User size={12} />
+              {user.nickname}
+            </span>
+          ) : (
+            <Link
+              href="/login"
+              className="text-xs text-muted-foreground flex items-center gap-1"
+            >
+              <LogIn size={12} />
               로그인
             </Link>
           )}

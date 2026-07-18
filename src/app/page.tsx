@@ -72,7 +72,7 @@ export default function HomePage() {
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(220,38,38,0.08),_transparent_60%)]" />
         <div className="relative space-y-2">
           <p className="text-xs font-semibold text-red-400 tracking-[0.2em] uppercase">세븐나이츠 리버스</p>
-          <h1 className="text-4xl font-black tracking-tight">⚔️ 흑우단 공략</h1>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tight">⚔️ 흑우단 공략</h1>
           <p className="text-muted-foreground text-sm mt-1">길드전 공략·기록·분석 통합 관리</p>
         </div>
       </div>

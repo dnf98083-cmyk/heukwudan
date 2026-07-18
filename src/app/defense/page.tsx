@@ -376,11 +376,11 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
         </div>
       </div>
 
-      {/* ② 중단: 진형 | 방어 현황 */}
-      <div className="flex min-h-0">
-        {/* 진형 (고정 너비) */}
+      {/* ② 중단: 진형 | 방어 현황 (모바일: 세로, 데스크탑: 가로) */}
+      <div className="flex flex-col sm:flex-row min-h-0">
+        {/* 진형 */}
         {team.formation_slots && team.formation_slots.length > 0 && (
-          <div className="w-[240px] shrink-0 border-r border-border/30 px-4 py-3">
+          <div className="sm:w-[240px] sm:shrink-0 sm:border-r sm:border-b-0 border-b border-border/30 px-4 py-3">
             <p className="text-[11px] text-muted-foreground mb-2">
               진형{team.formation_type ? ` (${team.formation_type})` : ""}
             </p>
@@ -388,13 +388,13 @@ function TeamCard({ team, onRefresh }: { team: DefenseTeam; onRefresh: () => voi
           </div>
         )}
 
-        {/* 방어 현황 (스크롤) */}
+        {/* 방어 현황 */}
         <div className="flex-1 min-w-0 flex flex-col">
           <div className="flex items-center gap-1.5 px-4 pt-3 pb-2 border-b border-border/20">
             <BarChart2 size={11} className="text-muted-foreground" />
             <span className="text-[11px] font-semibold text-muted-foreground">방어 현황</span>
           </div>
-          <div className="overflow-y-auto max-h-[260px] px-4 py-2">
+          <div className="overflow-y-auto sm:max-h-[260px] px-4 py-2">
             <DefenseStats teamId={team.id} />
           </div>
         </div>
