@@ -249,9 +249,33 @@ function DefenseStats({ teamId }: { teamId: string }) {
   }
 
   const groups = groupByOpponent(records);
+  const totalWins   = records.filter((r) => r.result === "승").length;
+  const totalLosses = records.filter((r) => r.result === "패").length;
+  const totalGames  = totalWins + totalLosses;
+  const totalRate   = totalGames > 0 ? Math.round((totalWins / totalGames) * 100) : null;
 
   return (
     <div className="space-y-2">
+      {/* 총 승률 요약 */}
+      {totalGames > 0 && (
+        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-muted/20 border border-border/30">
+          <span className="text-[11px] text-muted-foreground font-medium">전체 방어 성적</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">
+              <span className="text-blue-400 font-bold">{totalWins}승</span>
+              {" "}
+              <span className="text-red-400 font-bold">{totalLosses}패</span>
+            </span>
+            <span className={cn(
+              "text-sm font-black",
+              totalRate! >= 70 ? "text-green-400" : totalRate! >= 50 ? "text-yellow-400" : "text-red-400"
+            )}>
+              {totalRate}%
+            </span>
+          </div>
+        </div>
+      )}
+
       <button
         onClick={() => setAddOpen(true)}
         className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-border/60 text-xs text-muted-foreground hover:text-foreground hover:border-border hover:bg-accent/20 transition-colors"
