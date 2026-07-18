@@ -129,39 +129,121 @@ function groupByOpponent(records: DefenseRec[]): OpponentGroup[] {
   return Object.values(map).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
 }
 
-function AddDefenseRecordDialog({
-  teamId, onClose, onSaved,
+// 수비자 검색 공용 UI
+function DefenderSearchBox({
+  members, defenderName, setDefenderName,
 }: {
-  teamId: string; onClose: () => void; onSaved: () => void;
+  members: string[];
+  defenderName: string | null;
+  setDefenderName: (n: string | null) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = search.trim()
+    ? members.filter((n) => n.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
+  if (defenderName) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10">
+        <UserCheck size={12} className="text-blue-400 shrink-0" />
+        <span className="flex-1 text-sm font-semibold text-blue-300">{defenderName}</span>
+        <button onClick={() => { setDefenderName(null); setSearch(""); }} className="text-muted-foreground hover:text-foreground transition-colors">
+          <X size={14} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <Input placeholder="닉네임 검색..." value={search} onChange={(e) => setSearch(e.target.value)} />
+      {filtered.length > 0 && (
+        <div className="max-h-28 overflow-y-auto rounded-lg border border-border bg-card divide-y divide-border/30">
+          {filtered.map((n) => (
+            <button
+              key={n}
+              onClick={() => { setDefenderName(n); setSearch(""); }}
+              className="w-full text-left px-3 py-2 text-sm hover:bg-accent/30 transition-colors"
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// 빠른 승/패 기록 시 수비자 선택 다이얼로그
+function QuickRecordDialog({
+  teamId, heroes, result, members, onClose, onSaved,
+}: {
+  teamId: string; heroes: string[]; result: "승" | "패";
+  members: string[]; onClose: () => void; onSaved: () => void;
+}) {
+  const [defenderName, setDefenderName] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save(defender: string | null) {
+    setSaving(true);
+    await fetch("/api/defense-records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, defender_name: defender }),
+    });
+    setSaving(false);
+    onSaved();
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-xs">
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <span className={cn(
+              "px-2 py-0.5 rounded text-sm font-black border",
+              result === "승" ? "border-blue-500 text-blue-300 bg-blue-500/10" : "border-red-500 text-red-300 bg-red-500/10"
+            )}>
+              {result}
+            </span>
+            <h2 className="text-sm font-bold">누가 막았나요?</h2>
+          </div>
+
+          <DefenderSearchBox members={members} defenderName={defenderName} setDefenderName={setDefenderName} />
+
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" className="flex-1 text-xs text-muted-foreground" onClick={() => save(null)} disabled={saving}>
+              건너뛰기
+            </Button>
+            <Button size="sm" className="flex-1 text-xs" onClick={() => save(defenderName)} disabled={saving || !defenderName}>
+              {saving ? "저장 중..." : "저장"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AddDefenseRecordDialog({
+  teamId, members, onClose, onSaved,
+}: {
+  teamId: string; members: string[]; onClose: () => void; onSaved: () => void;
 }) {
   const [heroes, setHeroes] = useState<string[]>([]);
   const [result, setResult] = useState<"승" | "패" | null>(null);
   const [memo, setMemo] = useState("");
   const [defenderName, setDefenderName] = useState<string | null>(null);
-  const [memberSearch, setMemberSearch] = useState("");
-  const [members, setMembers] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    fetch("/api/members")
-      .then((r) => r.json())
-      .then((d) => {
-        if (Array.isArray(d)) setMembers(d.map((m: { nickname: string }) => m.nickname));
-      });
-  }, []);
-
-  const filteredMembers = memberSearch
-    ? members.filter((n) => n.toLowerCase().includes(memberSearch.toLowerCase()))
-    : members;
-
-  async function handleSave() {
+  async function handleSave(defender: string | null) {
     if (!result) { setError("승/패를 선택해주세요."); return; }
     setSaving(true); setError("");
     const res = await fetch("/api/defense-records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, memo: memo || null, defender_name: defenderName }),
+      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, memo: memo || null, defender_name: defender }),
     });
     setSaving(false);
     if (!res.ok) { const j = await res.json(); setError(j.error ?? "저장 실패"); return; }
@@ -199,44 +281,12 @@ function AddDefenseRecordDialog({
             </div>
           </div>
 
-          {/* 수비자 선택 */}
           <div className="space-y-1.5">
             <label className="text-xs text-muted-foreground flex items-center gap-1">
               <UserCheck size={11} />
               누가 막았나요? (선택)
             </label>
-            {defenderName ? (
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10">
-                <span className="flex-1 text-sm font-semibold text-blue-300">{defenderName}</span>
-                <button
-                  onClick={() => { setDefenderName(null); setMemberSearch(""); }}
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <Input
-                  placeholder="닉네임 검색..."
-                  value={memberSearch}
-                  onChange={(e) => setMemberSearch(e.target.value)}
-                />
-                {filteredMembers.length > 0 && (
-                  <div className="max-h-28 overflow-y-auto rounded-lg border border-border bg-card divide-y divide-border/30">
-                    {filteredMembers.map((n) => (
-                      <button
-                        key={n}
-                        onClick={() => { setDefenderName(n); setMemberSearch(""); }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent/30 transition-colors"
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <DefenderSearchBox members={members} defenderName={defenderName} setDefenderName={setDefenderName} />
           </div>
 
           <div className="space-y-1.5">
@@ -254,7 +304,10 @@ function AddDefenseRecordDialog({
 
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1" onClick={onClose}>취소</Button>
-            <Button className="flex-1" onClick={handleSave} disabled={saving || !result}>
+            <Button variant="ghost" className="flex-1 text-xs text-muted-foreground" onClick={() => handleSave(null)} disabled={saving || !result}>
+              건너뛰기
+            </Button>
+            <Button className="flex-1" onClick={() => handleSave(defenderName)} disabled={saving || !result}>
               {saving ? "저장 중..." : "저장"}
             </Button>
           </div>
@@ -267,8 +320,10 @@ function AddDefenseRecordDialog({
 function DefenseStats({ teamId }: { teamId: string }) {
   const [records, setRecords] = useState<DefenseRec[]>([]);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<string[]>([]);
   const [addOpen, setAddOpen] = useState(false);
-  const [acting, setActing] = useState<string | null>(null);
+  const [quickTarget, setQuickTarget] = useState<{ heroes: string[]; result: "승" | "패" } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   async function fetchRecords() {
     setLoading(true);
@@ -277,30 +332,23 @@ function DefenseStats({ teamId }: { teamId: string }) {
     setLoading(false);
   }
 
-  useEffect(() => { fetchRecords(); }, [teamId]);
-
-  async function quickRecord(heroes: string[], result: "승" | "패") {
-    const key = heroes.slice().sort().join(",") + result;
-    setActing(key);
-    await fetch("/api/defense-records", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result }),
-    });
-    setActing(null);
+  useEffect(() => {
     fetchRecords();
-  }
+    fetch("/api/members")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d)) setMembers(d.map((m: { nickname: string }) => m.nickname)); });
+  }, [teamId]);
 
   async function deleteGroup(heroes: string[]) {
     if (!confirm("이 상대덱의 기록을 모두 삭제할까요?")) return;
-    const key = heroes.slice().sort().join(",") + "del";
-    setActing(key);
+    const key = heroes.slice().sort().join(",");
+    setDeleting(key);
     await fetch("/api/defense-records", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes }),
     });
-    setActing(null);
+    setDeleting(null);
     fetchRecords();
   }
 
@@ -372,22 +420,20 @@ function DefenseStats({ teamId }: { teamId: string }) {
                 </div>
                 {/* 빠른 버튼 */}
                 <button
-                  onClick={() => quickRecord(g.heroes, "승")}
-                  disabled={acting === sortedKey + "승"}
+                  onClick={() => setQuickTarget({ heroes: g.heroes, result: "승" })}
                   className="shrink-0 px-2 py-1 rounded text-[10px] font-bold border border-blue-500/40 text-blue-400 hover:bg-blue-500/10 disabled:opacity-40 transition-colors"
                 >
-                  {acting === sortedKey + "승" ? "·" : "+승"}
+                  +승
                 </button>
                 <button
-                  onClick={() => quickRecord(g.heroes, "패")}
-                  disabled={acting === sortedKey + "패"}
-                  className="shrink-0 px-2 py-1 rounded text-[10px] font-bold border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
+                  onClick={() => setQuickTarget({ heroes: g.heroes, result: "패" })}
+                  className="shrink-0 px-2 py-1 rounded text-[10px] font-bold border border-red-500/40 text-red-400 hover:bg-red-500/10 transition-colors"
                 >
-                  {acting === sortedKey + "패" ? "·" : "+패"}
+                  +패
                 </button>
                 <button
                   onClick={() => deleteGroup(g.heroes)}
-                  disabled={acting === sortedKey + "del"}
+                  disabled={deleting === sortedKey}
                   className="shrink-0 p-1 rounded text-muted-foreground hover:text-red-400 hover:bg-red-500/10 disabled:opacity-40 transition-colors"
                   title="기록 삭제"
                 >
@@ -408,8 +454,19 @@ function DefenseStats({ teamId }: { teamId: string }) {
       {addOpen && (
         <AddDefenseRecordDialog
           teamId={teamId}
+          members={members}
           onClose={() => setAddOpen(false)}
           onSaved={() => { setAddOpen(false); fetchRecords(); }}
+        />
+      )}
+      {quickTarget && (
+        <QuickRecordDialog
+          teamId={teamId}
+          heroes={quickTarget.heroes}
+          result={quickTarget.result}
+          members={members}
+          onClose={() => setQuickTarget(null)}
+          onSaved={() => { setQuickTarget(null); fetchRecords(); }}
         />
       )}
     </div>
