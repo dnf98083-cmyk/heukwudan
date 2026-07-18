@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Shield, Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp, BarChart2 } from "lucide-react";
+import { Shield, Plus, Search, Pencil, Trash2, ChevronDown, ChevronUp, BarChart2, X, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,6 +101,7 @@ interface DefenseRec {
   id: string;
   team_id: string;
   player_name: string;
+  defender_name: string | null;
   result: "승" | "패";
   opponent_heroes: string[];
   memo: string | null;
@@ -136,8 +137,23 @@ function AddDefenseRecordDialog({
   const [heroes, setHeroes] = useState<string[]>([]);
   const [result, setResult] = useState<"승" | "패" | null>(null);
   const [memo, setMemo] = useState("");
+  const [defenderName, setDefenderName] = useState<string | null>(null);
+  const [memberSearch, setMemberSearch] = useState("");
+  const [members, setMembers] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetch("/api/members")
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d)) setMembers(d.map((m: { nickname: string }) => m.nickname));
+      });
+  }, []);
+
+  const filteredMembers = memberSearch
+    ? members.filter((n) => n.toLowerCase().includes(memberSearch.toLowerCase()))
+    : members;
 
   async function handleSave() {
     if (!result) { setError("승/패를 선택해주세요."); return; }
@@ -145,7 +161,7 @@ function AddDefenseRecordDialog({
     const res = await fetch("/api/defense-records", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, memo: memo || null }),
+      body: JSON.stringify({ team_id: teamId, opponent_heroes: heroes, result, memo: memo || null, defender_name: defenderName }),
     });
     setSaving(false);
     if (!res.ok) { const j = await res.json(); setError(j.error ?? "저장 실패"); return; }
@@ -181,6 +197,46 @@ function AddDefenseRecordDialog({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* 수비자 선택 */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground flex items-center gap-1">
+              <UserCheck size={11} />
+              누가 막았나요? (선택)
+            </label>
+            {defenderName ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-500/40 bg-blue-500/10">
+                <span className="flex-1 text-sm font-semibold text-blue-300">{defenderName}</span>
+                <button
+                  onClick={() => { setDefenderName(null); setMemberSearch(""); }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-1">
+                <Input
+                  placeholder="닉네임 검색..."
+                  value={memberSearch}
+                  onChange={(e) => setMemberSearch(e.target.value)}
+                />
+                {filteredMembers.length > 0 && (
+                  <div className="max-h-28 overflow-y-auto rounded-lg border border-border bg-card divide-y divide-border/30">
+                    {filteredMembers.map((n) => (
+                      <button
+                        key={n}
+                        onClick={() => { setDefenderName(n); setMemberSearch(""); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-accent/30 transition-colors"
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-1.5">

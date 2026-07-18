@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient();
   let q = supabase
     .from("defense_records")
-    .select("id, team_id, player_name, result, opponent_heroes, memo, recorded_at")
+    .select("id, team_id, player_name, defender_name, result, opponent_heroes, memo, recorded_at")
     .order("recorded_at", { ascending: false });
   if (teamId) q = q.eq("team_id", teamId);
   const { data, error } = await q;
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
   if (!session.isLoggedIn) return NextResponse.json({ error: "로그인 필요" }, { status: 401 });
 
   const body = await request.json();
-  const { team_id, opponent_heroes, result, memo } = body;
+  const { team_id, opponent_heroes, result, memo, defender_name } = body;
   if (!team_id || !result) return NextResponse.json({ error: "필수 항목 누락" }, { status: 400 });
 
   const { data, error } = await createAdminClient()
@@ -39,6 +39,7 @@ export async function POST(request: NextRequest) {
       opponent_heroes: opponent_heroes ?? [],
       result,
       memo: memo || null,
+      defender_name: defender_name || null,
       player_name: session.nickname ?? "알 수 없음",
       season: 1,
     })
